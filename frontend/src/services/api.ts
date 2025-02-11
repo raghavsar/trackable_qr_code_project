@@ -1,4 +1,5 @@
-import type { QRCodeResponse, VCardData, LandingPageData, ShortLinkData, AnalyticsResponse, AnalyticsData, VCardResponse, QRTemplate, QRDesignOptions } from '@/types/api'
+import type { QRCodeResponse, VCardData, LandingPageData, ShortLinkData, VCardResponse, QRTemplate, QRDesignOptions, AnalyticsResponse } from '@/types/api'
+import type { AnalyticsData } from '@/types/analytics'
 import { axiosInstance } from './axios'
 import axios from 'axios'
 
@@ -250,23 +251,15 @@ class QRService {
 
 export const qrService = new QRService()
 
-class AnalyticsService {
+export class AnalyticsService {
   async getAnalytics(timeRange: string): Promise<AnalyticsData> {
     const response = await axiosInstance.get(`/analytics/dashboard?timeRange=${timeRange}`)
-    const data = response.data
-    if (!data.success) {
-      throw new Error(data.error || 'Failed to fetch analytics data')
-    }
-    return data.data
+    return response.data.data
   }
 
   async getQRCodeAnalytics(qrCodeId: string, timeRange: string): Promise<AnalyticsData> {
     const response = await axiosInstance.get(`/analytics/qr/${qrCodeId}?timeRange=${timeRange}`)
-    const data = response.data
-    if (!data.success) {
-      throw new Error(data.error || 'Failed to fetch QR code analytics')
-    }
-    return data.data
+    return response.data.data
   }
 }
 

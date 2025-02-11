@@ -10,6 +10,7 @@ import "./styles/globals.css"
 import GoogleCallback from "./pages/auth/GoogleCallback"
 import { ProtectedRoute } from "./components/ProtectedRoute"
 import AnalyticsDashboard from "./pages/analytics/Dashboard"
+import QRCodeAnalytics from "./pages/analytics/QRCodeAnalytics"
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools'
 import { GoogleOAuthProvider } from '@react-oauth/google'
@@ -59,41 +60,37 @@ function App() {
             <AuthProvider>
               <Routes>
                 <Route path="/r/:id" element={<VCardRedirect />} />
-                <Route path="/" element={<Layout />}>
+                <Route path="/" element={<ProtectedRoute><Layout /></ProtectedRoute>}>
                   <Route index element={
-                    <ProtectedRoute>
-                      <div className="container mx-auto py-10">
-                        <Tabs defaultValue="qr-codes" className="space-y-6">
-                          <TabsList>
-                            <TabsTrigger value="qr-codes">QR Codes</TabsTrigger>
-                            <TabsTrigger value="pages">Pages</TabsTrigger>
-                            <TabsTrigger value="short-links">Short Links</TabsTrigger>
-                          </TabsList>
+                    <Tabs defaultValue="qr-codes" className="space-y-6">
+                      <TabsList>
+                        <TabsTrigger value="qr-codes">QR Codes</TabsTrigger>
+                        <TabsTrigger value="pages">Pages</TabsTrigger>
+                        <TabsTrigger value="short-links">Short Links</TabsTrigger>
+                      </TabsList>
 
-                          <TabsContent value="qr-codes" className="space-y-8">
-                            <div className="grid gap-6">
-                              <div className="space-y-4">
-                                <h2 className="text-2xl font-bold">Create New QR Code</h2>
-                                <VCardForm />
-                              </div>
+                      <TabsContent value="qr-codes" className="space-y-8">
+                        <div className="grid gap-6">
+                          <div className="space-y-4">
+                            <h2 className="text-2xl font-bold">Create New QR Code</h2>
+                            <VCardForm />
+                          </div>
 
-                              <div className="space-y-4">
-                                <h2 className="text-2xl font-bold">Your QR Codes</h2>
-                                <QRCodeList />
-                              </div>
-                            </div>
-                          </TabsContent>
+                          <div className="space-y-4">
+                            <h2 className="text-2xl font-bold">Your QR Codes</h2>
+                            <QRCodeList />
+                          </div>
+                        </div>
+                      </TabsContent>
 
-                          <TabsContent value="pages">
-                            <p>Landing pages coming soon...</p>
-                          </TabsContent>
+                      <TabsContent value="pages">
+                        <p>Landing pages coming soon...</p>
+                      </TabsContent>
 
-                          <TabsContent value="short-links">
-                            <p>URL shortener coming soon...</p>
-                          </TabsContent>
-                        </Tabs>
-                      </div>
-                    </ProtectedRoute>
+                      <TabsContent value="short-links">
+                        <p>URL shortener coming soon...</p>
+                      </TabsContent>
+                    </Tabs>
                   } />
                   <Route path="/profile" element={
                     <ProtectedRoute>
@@ -108,6 +105,11 @@ function App() {
                   <Route path="/analytics" element={
                     <ProtectedRoute>
                       <AnalyticsDashboard />
+                    </ProtectedRoute>
+                  } />
+                  <Route path="/analytics/qr/:id" element={
+                    <ProtectedRoute>
+                      <QRCodeAnalytics />
                     </ProtectedRoute>
                   } />
                 </Route>

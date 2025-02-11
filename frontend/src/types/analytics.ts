@@ -28,12 +28,22 @@ export interface HistoricalMetrics {
 }
 
 export interface DailyMetric {
-  date: string;
-  total_scans: number;
-  contact_adds: number;
-  vcf_downloads: number;
-  mobile_scans: number;
-  desktop_scans: number;
+  date: string
+  total_scans: number
+  contact_adds: number
+  vcf_downloads: number
+  mobile_scans: number
+  desktop_scans: number
+}
+
+export interface AnalyticsData {
+  total_scans: number
+  contact_adds: number
+  vcf_downloads: number
+  mobile_scans: number
+  desktop_scans: number
+  daily_metrics: DailyMetric[]
+  recent_scans: ScanEvent[]
 }
 
 export interface ScanEntry {

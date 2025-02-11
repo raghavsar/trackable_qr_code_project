@@ -5,11 +5,12 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Line, LineChart, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts"
 import { ChartContainer, ChartTooltipContent } from "@/components/ui/chart"
-import { Globe, Smartphone, Loader2, RefreshCw, AlertCircle } from "lucide-react"
+import { Globe, Smartphone, Loader2, RefreshCw, AlertCircle, ArrowLeft } from "lucide-react"
 import { useAnalyticsSSE } from '@/hooks/useAnalyticsSSE';
 import { useHistoricalAnalytics } from '@/hooks/useHistoricalAnalytics';
 import { format, subDays } from 'date-fns';
 import { Button } from "@/components/ui/button";
+import { useNavigate } from 'react-router-dom'
 
 export default function AnalyticsDashboard() {
   const [timeRange, setTimeRange] = useState('30');
@@ -28,6 +29,8 @@ export default function AnalyticsDashboard() {
     endDate
   });
 
+  const navigate = useNavigate()
+
   const handleTimeRangeChange = useCallback((value: string) => {
     setTimeRange(value);
   }, []);
@@ -35,6 +38,10 @@ export default function AnalyticsDashboard() {
   const handleRefresh = useCallback(() => {
     refetchHistory();
   }, [refetchHistory]);
+
+  const handleBack = () => {
+    navigate('/')
+  }
 
   const renderError = (message: string) => (
     <div className="p-4 bg-red-50 border border-red-200 rounded-lg flex items-center gap-2 text-red-700">
@@ -71,7 +78,40 @@ export default function AnalyticsDashboard() {
   );
 
   return (
-    <div className="container mx-auto p-4 space-y-4">
+    <div className="container mx-auto p-4 space-y-6">
+      <div className="flex justify-between items-center">
+        <div className="flex items-center gap-4">
+          <Button variant="ghost" size="sm" onClick={handleBack}>
+            <ArrowLeft className="h-4 w-4 mr-2" />
+            Back
+          </Button>
+          <h1 className="text-2xl font-bold">Analytics Dashboard</h1>
+        </div>
+        <div className="flex items-center gap-2">
+          <Select 
+            value={timeRange} 
+            onValueChange={handleTimeRangeChange}
+          >
+            <SelectTrigger className="w-[180px]">
+              <SelectValue placeholder="Select time period" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="7">Last 7 days</SelectItem>
+              <SelectItem value="30">Last 30 days</SelectItem>
+              <SelectItem value="90">Last 90 days</SelectItem>
+            </SelectContent>
+          </Select>
+          <Button 
+            variant="outline" 
+            size="icon"
+            onClick={handleRefresh}
+            disabled={historyLoading}
+          >
+            <RefreshCw className={`h-4 w-4 ${historyLoading ? 'animate-spin' : ''}`} />
+          </Button>
+        </div>
+      </div>
+
       {(realtimeError || historyError) && (
         <div className="space-y-2">
           {realtimeError && renderError(`Real-time analytics error: ${realtimeError.message}`)}
@@ -105,29 +145,6 @@ export default function AnalyticsDashboard() {
               <div className="text-2xl font-bold">{realtimeMetrics?.vcf_downloads || 0}</div>
             </CardContent>
           </Card>
-        </div>
-        <div className="flex items-center gap-2">
-          <Select 
-            value={timeRange} 
-            onValueChange={handleTimeRangeChange}
-          >
-            <SelectTrigger className="w-[180px]">
-              <SelectValue placeholder="Select time period" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="7">Last 7 days</SelectItem>
-              <SelectItem value="30">Last 30 days</SelectItem>
-              <SelectItem value="90">Last 90 days</SelectItem>
-            </SelectContent>
-          </Select>
-          <Button 
-            variant="outline" 
-            size="icon"
-            onClick={handleRefresh}
-            disabled={historyLoading}
-          >
-            <RefreshCw className={`h-4 w-4 ${historyLoading ? 'animate-spin' : ''}`} />
-          </Button>
         </div>
       </div>
 

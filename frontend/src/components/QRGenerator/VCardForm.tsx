@@ -11,7 +11,7 @@ import { toast } from 'react-hot-toast'
 import { qrService } from '@/services/api'
 import type { QRCodeResponse, VCardData } from '@/types/api'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../ui/dropdown-menu"
-import { ChevronDown, Download, Edit, Share2, Trash2 } from 'lucide-react'
+import { ChevronDown, Download, Edit, Share2, Trash2, BarChart2 } from 'lucide-react'
 import QRCodeEditor from './QRCodeEditor'
 
 interface FormData {
@@ -254,6 +254,11 @@ export default function VCardForm() {
     // Refresh QR codes list
     fetchQRCodes()
   }
+
+  // Add the analytics handler function
+  const handleViewAnalytics = (code: QRCodeResponse) => {
+    window.open(`/analytics/qr/${code.id}`, '_blank');
+  };
 
   return (
     <div className="space-y-8">
@@ -528,6 +533,9 @@ export default function VCardForm() {
                       </DropdownMenu>
                       <Button variant="outline" size="sm" onClick={() => handleShare(code)}>
                         <Share2 className="h-4 w-4" />
+                      </Button>
+                      <Button variant="outline" size="sm" onClick={() => handleViewAnalytics(code)}>
+                        <BarChart2 className="h-4 w-4" />
                       </Button>
                       <Button 
                         variant="outline" 
