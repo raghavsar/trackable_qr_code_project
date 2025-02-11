@@ -1,0 +1,7 @@
+graph TD
+    A[User Scans QR Code] --> B[Redirect Service]
+    B -->|Device Detection| C{Device Type}
+    C -->|Mobile| D[Direct Add to Contacts]
+    C -->|Desktop/Other| E[VCF Download]
+    B -->|Async| F[Analytics Service]
+    F -->|Real-time| G[Dashboard Update]

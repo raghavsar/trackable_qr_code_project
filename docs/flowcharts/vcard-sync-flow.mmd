@@ -1,0 +1,16 @@
+flowchart TD
+    A[vCard Form] --> B[Validate Input]
+    B --> C{Is Valid?}
+    C -->|No| D[Show Error Message]
+    D --> A
+    
+    C -->|Yes| E[Generate vCard String]
+    E --> F[Create QR Code]
+    F --> G[Preview]
+    G --> H{Save vCard?}
+    
+    H -->|Yes| I[Save to Database]
+    I --> J[Generate Shareable Link]
+    J --> K[Download Options]
+    
+    H -->|No| K 

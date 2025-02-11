@@ -1,0 +1,210 @@
+version: '3.8'
+
+services:
+  mongodb:
+    image: mongo:latest
+    container_name: qr-mongodb
+    restart: always
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+      - ./mongodb/init-mongo.js:/docker-entrypoint-initdb.d/init-mongo.js:ro
+    networks:
+      - qr-network
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=admin
+      - MONGO_INITDB_ROOT_PASSWORD=adminpassword
+      - MONGO_INITDB_DATABASE=qr_code_db
+    command: ["mongod", "--auth", "--bind_ip_all"]
+    healthcheck:
+      test: mongosh --eval 'db.runCommand("ping").ok' localhost:27017/test --quiet
+      interval: 10s
+      timeout: 10s
+      retries: 5
+      start_period: 40s
+
+  minio:
+    image: minio/minio:latest
+    container_name: qr-minio
+    ports:
+      - "9000:9000"  # API port
+      - "9001:9001"  # Console port
+    volumes:
+      - minio_data:/data
+    networks:
+      - qr-network
+    environment:
+      - MINIO_ROOT_USER=minioadmin
+      - MINIO_ROOT_PASSWORD=minioadmin
+      - MINIO_ADDRESS=:9000
+      - MINIO_CONSOLE_ADDRESS=:9001
+      - MINIO_BROWSER_REDIRECT_URL=http://192.168.7.154:9001
+      - MINIO_SERVER_URL=http://192.168.7.154:9000
+    command: server /data --console-address ":9001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+
+  minio-init:
+    image: minio/mc
+    depends_on:
+      minio:
+        condition: service_healthy
+    networks:
+      - qr-network
+    volumes:
+      - ./minio-init.sh:/minio-init.sh
+    entrypoint: ["/bin/sh", "/minio-init.sh"]
+
+  api-gateway:
+    build:
+      context: .
+      dockerfile: api-gateway/Dockerfile
+    container_name: qr-api-gateway
+    ports:
+      - "8000:8000"
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    networks:
+      - qr-network
+    environment:
+      - MONGODB_URL=mongodb://admin:adminpassword@mongodb:27017/qr_code_db?authSource=admin&directConnection=true
+      - JWT_SECRET=e0a345b2f4c8767d5dcaf4cd3c58526369fca63d6f40cb64350420c22f697581f68b048343720d3ecb16cceae9539ac9377ce356586dae83b09177f0c6514391
+      - JWT_ALGORITHM=HS256
+      - JWT_EXPIRATION=3600
+      - USER_SERVICE_URL=http://user-service:8001
+      - VCARD_SERVICE_URL=http://vcard-service:8002
+      - QR_SERVICE_URL=http://qr-service:8003
+      - ANALYTICS_SERVICE_URL=http://analytics-service:8004
+      - REDIRECT_SERVICE_URL=http://redirect-service:8005
+      - PORT=8000
+      - FRONTEND_URL=${FRONTEND_URL}
+
+  user-service:
+    build:
+      context: .
+      dockerfile: user-service/Dockerfile
+    container_name: qr-user-service
+    ports:
+      - "8001:8001"
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    networks:
+      - qr-network
+    environment:
+      - MONGODB_URL=mongodb://admin:adminpassword@mongodb:27017/qr_code_db?authSource=admin&directConnection=true
+      - PORT=8001
+      - JWT_SECRET=e0a345b2f4c8767d5dcaf4cd3c58526369fca63d6f40cb64350420c22f697581f68b048343720d3ecb16cceae9539ac9377ce356586dae83b09177f0c6514391
+      - JWT_ALGORITHM=HS256
+      - JWT_EXPIRATION=3600
+
+  vcard-service:
+    build:
+      context: .
+      dockerfile: vcard-service/Dockerfile
+    container_name: qr-vcard-service
+    ports:
+      - "8002:8002"
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    networks:
+      - qr-network
+    environment:
+      - MONGODB_URL=mongodb://admin:adminpassword@mongodb:27017/qr_code_db?authSource=admin&directConnection=true
+      - PORT=8002
+      - JWT_SECRET=e0a345b2f4c8767d5dcaf4cd3c58526369fca63d6f40cb64350420c22f697581f68b048343720d3ecb16cceae9539ac9377ce356586dae83b09177f0c6514391
+      - JWT_ALGORITHM=HS256
+      - JWT_EXPIRATION=3600
+
+  qr-service:
+    build:
+      context: .
+      dockerfile: qr-service/Dockerfile
+    container_name: qr-qr-service
+    ports:
+      - "8003:8003"
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+    networks:
+      - qr-network
+    environment:
+      - MONGODB_URL=mongodb://admin:adminpassword@mongodb:27017/qr_code_db?authSource=admin&directConnection=true
+      - PORT=8003
+      - JWT_SECRET=e0a345b2f4c8767d5dcaf4cd3c58526369fca63d6f40cb64350420c22f697581f68b048343720d3ecb16cceae9539ac9377ce356586dae83b09177f0c6514391
+      - JWT_ALGORITHM=HS256
+      - JWT_EXPIRATION=3600
+      - ANALYTICS_SERVICE_URL=http://analytics-service:8004
+      - FRONTEND_URL=${FRONTEND_URL}
+      - MINIO_ENDPOINT=minio:9000
+      - MINIO_PUBLIC_ENDPOINT=http://192.168.7.154:9000
+      - MINIO_ACCESS_KEY=qr_service_user
+      - MINIO_SECRET_KEY=qr_service_password_123
+      - MINIO_BUCKET_NAME=qrcodes
+      - MINIO_USE_SSL=false
+
+  analytics-service:
+    build:
+      context: .
+      dockerfile: analytics-service/Dockerfile
+    container_name: qr-analytics-service
+    ports:
+      - "8004:8004"
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    networks:
+      - qr-network
+    environment:
+      - MONGODB_URL=mongodb://admin:adminpassword@mongodb:27017/qr_code_db?authSource=admin&directConnection=true
+      - PORT=8004
+      - JWT_SECRET=e0a345b2f4c8767d5dcaf4cd3c58526369fca63d6f40cb64350420c22f697581f68b048343720d3ecb16cceae9539ac9377ce356586dae83b09177f0c6514391
+      - JWT_ALGORITHM=HS256
+      - JWT_EXPIRATION=3600
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8004/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  redirect-service:
+    build:
+      context: .
+      dockerfile: redirect-service/Dockerfile
+    container_name: qr-redirect-service
+    ports:
+      - "8005:8005"
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      analytics-service:
+        condition: service_healthy
+    networks:
+      - qr-network
+    environment:
+      - MONGODB_URL=mongodb://admin:adminpassword@mongodb:27017/qr_code_db?authSource=admin&directConnection=true
+      - PORT=8005
+      - JWT_SECRET=e0a345b2f4c8767d5dcaf4cd3c58526369fca63d6f40cb64350420c22f697581f68b048343720d3ecb16cceae9539ac9377ce356586dae83b09177f0c6514391
+      - JWT_ALGORITHM=HS256
+      - JWT_EXPIRATION=3600
+      - FRONTEND_URL=${FRONTEND_URL}
+      - ANALYTICS_SERVICE_URL=http://analytics-service:8004
+
+networks:
+  qr-network:
+    driver: bridge
+
+volumes:
+  mongodb_data:
+  minio_data: 

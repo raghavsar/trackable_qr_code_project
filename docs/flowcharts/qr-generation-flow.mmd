@@ -1,0 +1,16 @@
+flowchart TD
+    A[User Input] --> B{Input Type}
+    B -->|URL| C[URL Validation]
+    B -->|vCard| D[vCard Form]
+    B -->|Text| E[Text Input]
+    
+    C --> F[Generate Dynamic QR Code]
+    D --> F
+    E --> F
+    
+    F --> G[Preview QR Code]
+    G --> H{Save QR Code?}
+    H -->|Yes| I[Save to Database]
+    I --> J[Generate Tracking ID]
+    J --> K[Download QR Code]
+    H -->|No| K 

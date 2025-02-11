@@ -1,0 +1,11 @@
+fastapi==0.104.1
+uvicorn==0.24.0
+motor
+pymongo
+httpx==0.25.2
+ua-parser==0.18.0
+user-agents==2.2.0
+vobject==0.9.6.1
+python-multipart==0.0.6
+pydantic==2.4.2
+pymongo>=4.6.0

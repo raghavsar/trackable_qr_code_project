@@ -1,0 +1,10 @@
+fastapi==0.104.1
+uvicorn==0.24.0
+motor==3.3.1
+pymongo==4.6.1
+pydantic==2.4.2
+pydantic[email]
+python-jose[cryptography]
+python-multipart
+httpx==0.25.0 
+PyJWT
