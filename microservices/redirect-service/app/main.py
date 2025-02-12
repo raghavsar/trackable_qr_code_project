@@ -53,61 +53,60 @@ def get_device_info(user_agent_string: str):
     }
 
 def generate_vcard(vcard_data: dict) -> bytes:
-    """Generate .vcf file content"""
-    card = vobject.vCard()
+    """Generate .vcf file content using VCard 3.0 format for better compatibility"""
+    vcard_lines = [
+        "BEGIN:VCARD",
+        "VERSION:3.0",
+        f"N:{vcard_data['last_name']};{vcard_data['first_name']};;;",
+        f"FN:{vcard_data['first_name']} {vcard_data['last_name']}",
+    ]
     
-    # Add name
-    card.add('fn')
-    card.fn.value = f"{vcard_data['first_name']} {vcard_data['last_name']}"
-    card.add('n')
-    card.n.value = vobject.vcard.Name(
-        family=vcard_data['last_name'],
-        given=vcard_data['first_name']
-    )
-    
-    # Add contact details
+    # Add phone numbers with proper typing for better system dialog support
     if vcard_data.get('mobile_number'):
-        tel = card.add('tel')
-        tel.value = vcard_data['mobile_number']
-        tel.type_param = 'CELL'
-    
+        vcard_lines.append(f"TEL;TYPE=CELL,VOICE:{vcard_data['mobile_number']}")
     if vcard_data.get('work_number'):
-        tel = card.add('tel')
-        tel.value = vcard_data['work_number']
-        tel.type_param = 'WORK'
+        vcard_lines.append(f"TEL;TYPE=WORK,VOICE:{vcard_data['work_number']}")
     
+    # Add email with proper typing
     if vcard_data.get('email'):
-        email = card.add('email')
-        email.value = vcard_data['email']
-        
+        vcard_lines.append(f"EMAIL;TYPE=WORK,INTERNET:{vcard_data['email']}")
+    
+    # Add organization and title
     if vcard_data.get('company'):
-        org = card.add('org')
-        org.value = [vcard_data['company']]
-        
+        vcard_lines.append(f"ORG:{vcard_data['company']}")
     if vcard_data.get('title'):
-        title = card.add('title')
-        title.value = vcard_data['title']
+        vcard_lines.append(f"TITLE:{vcard_data['title']}")
     
+    # Add website
     if vcard_data.get('website'):
-        url = card.add('url')
-        url.value = vcard_data['website']
+        vcard_lines.append(f"URL;TYPE=WORK:{vcard_data['website']}")
     
-    # Add address if available
+    # Add address if available with proper typing
     if vcard_data.get('address'):
-        adr = card.add('adr')
-        adr.value = vobject.vcard.Address(
-            street=vcard_data['address'].get('street', ''),
-            city=vcard_data['address'].get('city', ''),
-            region=vcard_data['address'].get('state', ''),
-            code=vcard_data['address'].get('zip_code', ''),
-            country=vcard_data['address'].get('country', '')
-        )
+        addr = vcard_data['address']
+        adr_parts = [
+            "",  # Post office box
+            "",  # Extended address
+            addr.get('street', ''),
+            addr.get('city', ''),
+            addr.get('state', ''),
+            addr.get('zip_code', ''),
+            addr.get('country', '')
+        ]
+        vcard_lines.append(f"ADR;TYPE=WORK:{';'.join(adr_parts)}")
     
-    return card.serialize().encode('utf-8')
+    # Add required end
+    vcard_lines.append("END:VCARD")
+    
+    # Join with proper line endings and encode
+    return "\r\n".join(vcard_lines).encode('utf-8')
 
 def get_platform_specific_url(vcard_data: dict, device_info: dict) -> str:
     """Generate platform-specific deep links with enhanced logging"""
     logger.info(f"Generating platform-specific URL. Device info: {device_info}")
+    
+    # Get base URL with fallback
+    base_url = os.getenv('FRONTEND_URL', 'http://localhost:3000').rstrip('/')
     
     if device_info["is_mobile"]:
         name = f"{vcard_data['first_name']} {vcard_data['last_name']}"
@@ -120,60 +119,54 @@ def get_platform_specific_url(vcard_data: dict, device_info: dict) -> str:
         
         if "iOS" in device_info["os"]:
             logger.info("Generating iOS contact URL")
-            # Use the more reliable iOS contact URL scheme
+            # Use tel: scheme for iOS to trigger system dialog
+            if phone:
+                return f"tel:{phone}"
+            # Fallback to contacts scheme if no phone
             contact_data = {
                 "fn": name,
-                "tel": phone,
                 "email": email,
                 "org": vcard_data.get('company', ''),
                 "title": vcard_data.get('title', '')
             }
-            # Filter out empty values and encode
             contact_data = {k: v for k, v in contact_data.items() if v}
             encoded_data = urlencode(contact_data)
-            ios_url = f"contacts:add?{encoded_data}"
-            logger.info(f"Generated iOS URL: {ios_url}")
-            return ios_url
+            return f"contacts:add?{encoded_data}"
             
         elif "Android" in device_info["os"]:
             logger.info("Generating Android intent URL")
             
-            # Use content provider URI for Android
+            if phone:
+                # Use tel: scheme for Android to trigger system dialog
+                return f"tel:{phone}"
+            
+            # Fallback to contacts intent if no phone
             intent_params = [
                 "action=android.intent.action.INSERT",
                 "type=vnd.android.cursor.dir/contact",
-                "package=com.android.contacts"
             ]
             
-            # Add data parameters with proper encoding
-            if name:
-                intent_params.append(f"S.name={name}")
-            if phone:
-                intent_params.append(f"S.phone={phone}")
-            if email:
-                intent_params.append(f"S.email={email}")
-            if vcard_data.get('company'):
-                intent_params.append(f"S.company={vcard_data['company']}")
-            if vcard_data.get('title'):
-                intent_params.append(f"S.jobTitle={vcard_data['title']}")
+            # Add contact data
+            contact_data = {
+                "name": name,
+                "email": email,
+                "company": vcard_data.get('company', ''),
+                "title": vcard_data.get('title', '')
+            }
+            contact_data = {k: v for k, v in contact_data.items() if v}
             
-            # Add fallback URL for devices that don't support the intent
-            fallback_url = f"{os.getenv('FRONTEND_URL')}/r/{vcard_data['_id']}?format=vcf"
-            intent_params.append(f"S.browser_fallback_url={fallback_url}")
+            for key, value in contact_data.items():
+                intent_params.append(f"{key}={value}")
             
-            # Construct the final intent URL with proper encoding
-            intent_params_encoded = [urlencode({'': param}).lstrip('=') for param in intent_params]
-            intent_url = f"intent://contacts/#Intent;{';'.join(intent_params_encoded)};end"
-            logger.info(f"Generated Android intent URL: {intent_url}")
-            return intent_url
+            # Add fallback URL
+            fallback_url = f"{base_url}/r/{vcard_data['_id']}?format=vcf"
+            intent_params.append(f"S.browser_fallback_url={urlencode({'': fallback_url}).lstrip('=')}")
+            
+            return f"intent://contacts/#Intent;{';'.join(intent_params)};end"
         
-        else:
-            logger.info(f"Unknown mobile OS: {device_info['os']}, falling back to VCF")
-            return f"{os.getenv('FRONTEND_URL')}/r/{vcard_data['_id']}?format=vcf"
-    
     # Web fallback with VCF download
     logger.info("Using web fallback with VCF download")
-    return f"{os.getenv('FRONTEND_URL')}/r/{vcard_data['_id']}?format=vcf"
+    return f"{base_url}/r/{vcard_data['_id']}?format=vcf"
 
 async def notify_analytics(vcard_id: str, request: Request, device_info: dict, action_type: str):
     """Notify analytics service about the scan with enhanced device info"""
@@ -209,6 +202,13 @@ async def redirect_to_vcard(
         logger.info(f"Format requested: {format}")
         logger.info(f"User Agent: {request.headers.get('user-agent')}")
         
+        # Get base URL with validation
+        base_url = os.getenv('FRONTEND_URL')
+        if not base_url:
+            logger.error("FRONTEND_URL environment variable not set")
+            raise HTTPException(status_code=500, detail="Server configuration error")
+        base_url = base_url.rstrip('/')
+        
         # Get VCard
         vcard = await db.vcards.find_one({"_id": PyObjectId(vcard_id)})
         if not vcard:
@@ -230,118 +230,44 @@ async def redirect_to_vcard(
             device_info,
             "scan"
         )
-        
-        # If .vcf format is explicitly requested
+
+        # If explicitly requesting VCF format, serve the file
         if format == "vcf":
-            logger.info("Generating VCF file (explicit request)")
+            logger.info("Serving VCard file as requested")
             vcf_content = generate_vcard(vcard)
             filename = f"{vcard['first_name']}_{vcard['last_name']}.vcf"
-            
-            # Notify analytics about VCF download
-            background_tasks.add_task(
-                notify_analytics,
-                vcard_id,
-                request,
-                device_info,
-                "vcf_download"
-            )
             
             return Response(
                 content=vcf_content,
                 media_type="text/vcard",
                 headers={
                     "Content-Disposition": f'attachment; filename="{filename}"',
-                    "Cache-Control": "no-cache, no-store, must-revalidate"
+                    "Cache-Control": "no-cache"
                 }
             )
         
-        # For mobile devices, try platform-specific handling
+        # For mobile devices, use platform-specific deep links
         if device_info["is_mobile"]:
-            # Generate mobile-specific URL
-            redirect_url = get_platform_specific_url(vcard, device_info)
-            logger.info(f"Generated mobile redirect URL: {redirect_url}")
+            platform_url = get_platform_specific_url(vcard, device_info)
+            logger.info(f"Redirecting to platform-specific URL: {platform_url}")
             
-            # Generate VCF content for fallback
-            vcf_content = generate_vcard(vcard)
-            filename = f"{vcard['first_name']}_{vcard['last_name']}.vcf"
-            
-            # Create a mobile-friendly HTML page with options
-            html_content = f"""
-            <!DOCTYPE html>
-            <html>
-            <head>
-                <meta name="viewport" content="width=device-width, initial-scale=1">
-                <title>Add Contact - {vcard['first_name']} {vcard['last_name']}</title>
-                <style>
-                    body {{ 
-                        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; 
-                        padding: 20px; 
-                        max-width: 500px; 
-                        margin: 0 auto;
-                        background: #f5f5f5;
-                    }}
-                    .card {{
-                        background: white;
-                        border-radius: 12px;
-                        padding: 20px;
-                        margin-bottom: 20px;
-                        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-                    }}
-                    .button {{ 
-                        display: block; 
-                        width: 100%; 
-                        padding: 15px; 
-                        margin: 10px 0; 
-                        border-radius: 8px; 
-                        text-align: center; 
-                        text-decoration: none;
-                        font-weight: 500;
-                        transition: all 0.2s;
-                    }}
-                    .primary {{ 
-                        background: #0066ff; 
-                        color: white;
-                        box-shadow: 0 2px 4px rgba(0,102,255,0.2);
-                    }}
-                    .secondary {{ 
-                        background: #f0f0f0; 
-                        color: #333;
-                    }}
-                </style>
-            </head>
-            <body>
-                <div class="card">
-                    <h2>Add Contact</h2>
-                    <p>{vcard['first_name']} {vcard['last_name']}</p>
-                    {f'<p>{vcard["title"]}</p>' if vcard.get('title') else ''}
-                    {f'<p>{vcard["company"]}</p>' if vcard.get('company') else ''}
-                </div>
-                <a href="{redirect_url}" class="button primary">Add to Contacts</a>
-                <a href="?format=vcf" class="button secondary">Download VCard</a>
-            </body>
-            </html>
-            """
-            
-            # Notify analytics about mobile redirect
+            # Notify analytics
             background_tasks.add_task(
                 notify_analytics,
                 vcard_id,
                 request,
                 device_info,
-                "mobile_redirect"
+                "platform_redirect"
             )
             
-            return Response(
-                content=html_content,
-                media_type="text/html",
-                headers={
-                    "Content-Type": "text/html; charset=utf-8",
-                    "Cache-Control": "no-cache, no-store, must-revalidate"
-                }
+            return RedirectResponse(
+                url=platform_url,
+                status_code=302,
+                headers={"Cache-Control": "no-cache"}
             )
         
         # For non-mobile devices, redirect to web view
-        web_url = f"{os.getenv('FRONTEND_URL')}/v/{vcard_id}"
+        web_url = f"{base_url}/v/{vcard_id}"
         logger.info(f"Redirecting to web view: {web_url}")
         
         return RedirectResponse(
