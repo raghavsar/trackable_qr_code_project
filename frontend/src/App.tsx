@@ -31,15 +31,15 @@ function VCardRedirect() {
       return
     }
 
-    // Direct redirect without pre-check
-    window.location.href = `http://192.168.7.154:8005/r/${id}?format=vcf`
+    // Direct redirect without forcing VCF format
+    window.location.href = `http://192.168.7.154:8005/r/${id}`
   }, [id, navigate])
 
   return (
     <div className="min-h-screen flex items-center justify-center">
       <div className="text-center space-y-4">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-900 mx-auto"></div>
-        <p className="text-lg">Preparing your vCard...</p>
+        <p className="text-lg">Preparing your contact...</p>
       </div>
     </div>
   )
