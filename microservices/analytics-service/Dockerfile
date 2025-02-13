@@ -20,6 +20,8 @@ COPY shared/ /app/shared/
 COPY analytics-service/app/auth.py /app/app/
 COPY analytics-service/app/database.py /app/app/
 COPY analytics-service/app/main.py /app/app/
+COPY analytics-service/app/redis_store.py /app/app/
+COPY analytics-service/app/__init__.py /app/app/
 
 # Make sure the shared module is in Python path
 ENV PYTHONPATH=/app

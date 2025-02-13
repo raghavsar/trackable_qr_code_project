@@ -3,10 +3,12 @@ from minio.error import S3Error
 import os
 from io import BytesIO
 import magic
-from datetime import timedelta
+from datetime import timedelta, datetime
 from typing import Optional
 import logging
 import json
+import base64
+from PIL import Image
 
 logger = logging.getLogger(__name__)
 
@@ -164,6 +166,95 @@ class MinioStorage:
         except Exception as e:
             logger.error(f"Unexpected error during deletion: {str(e)}")
             raise
+
+class StorageService:
+    def __init__(self):
+        self.client = Minio(
+            endpoint=os.getenv("MINIO_ENDPOINT", "minio:9000"),
+            access_key=os.getenv("MINIO_ACCESS_KEY", "qr_service_user"),
+            secret_key=os.getenv("MINIO_SECRET_KEY", "qr_service_password_123"),
+            secure=os.getenv("MINIO_USE_SSL", "false").lower() == "true"
+        )
+        self.bucket_name = os.getenv("MINIO_BUCKET_NAME", "qrcodes")
+        self.public_endpoint = os.getenv("MINIO_PUBLIC_ENDPOINT", "http://localhost:9000")
+        
+        # Ensure bucket exists
+        self._ensure_bucket_exists()
+
+    def _ensure_bucket_exists(self):
+        """Ensure the bucket exists, create if it doesn't"""
+        try:
+            if not self.client.bucket_exists(self.bucket_name):
+                self.client.make_bucket(self.bucket_name)
+                logger.info(f"Created bucket: {self.bucket_name}")
+        except S3Error as e:
+            logger.error(f"Error checking/creating bucket: {str(e)}")
+            raise
+
+    async def upload_profile_photo(self, photo_data: str, user_id: str, vcard_id: str = None) -> Optional[str]:
+        """
+        Upload a profile photo to MinIO
+        Args:
+            photo_data: Base64 string or URL of the photo
+            user_id: User ID for the photo
+            vcard_id: VCard ID for the photo
+        Returns:
+            Public URL of the uploaded photo
+        """
+        try:
+            # Handle base64 data
+            if photo_data.startswith('data:image'):
+                # Extract image data and format
+                format_type = photo_data.split(';')[0].split('/')[1]
+                image_data = base64.b64decode(photo_data.split(',')[1])
+                
+                # Process image to reduce size if needed
+                img = Image.open(BytesIO(image_data))
+                
+                # Resize if too large (max 800x800)
+                if max(img.size) > 800:
+                    img.thumbnail((800, 800), Image.Resampling.LANCZOS)
+                
+                # Convert to RGB if needed
+                if img.mode in ('RGBA', 'P'):
+                    img = img.convert('RGB')
+                
+                # Save to bytes
+                output = BytesIO()
+                img.save(output, format=format_type, quality=85, optimize=True)
+                image_data = output.getvalue()
+                
+                # Generate filename with timestamp
+                timestamp = datetime.utcnow().timestamp()
+                if vcard_id:
+                    filename = f"users/{user_id}/pfp_vcard/{vcard_id}_{timestamp}.{format_type}"
+                else:
+                    filename = f"users/{user_id}/profile_photos/profile_{timestamp}.{format_type}"
+                
+            else:
+                # If it's already a URL, check if it's our MinIO URL
+                if self.public_endpoint in photo_data:
+                    return photo_data
+                # For external URLs, download and process
+                return photo_data
+
+            # Upload to MinIO
+            self.client.put_object(
+                bucket_name=self.bucket_name,
+                object_name=filename,
+                data=BytesIO(image_data),
+                length=len(image_data),
+                content_type=f"image/{format_type}"
+            )
+            
+            # Return public URL
+            return f"{self.public_endpoint}/{self.bucket_name}/{filename}"
+            
+        except Exception as e:
+            logger.error(f"Error uploading profile photo: {str(e)}")
+            return None
+
+storage_service = StorageService()
 
 # Create a singleton instance
 storage = MinioStorage() 

@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Request, BackgroundTasks, Depends
+from fastapi import FastAPI, HTTPException, Request, BackgroundTasks, Depends, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, JSONResponse
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -9,8 +9,9 @@ from typing import Dict, List, Optional, Any, AsyncGenerator, Set, TYPE_CHECKING
 import logging
 import os
 
-from shared.models import PyObjectId
-from .database import get_database
+from shared.models import PyObjectId, ScanTrackingEvent
+from app.database import get_database
+from app.redis_store import get_redis_client
 
 if TYPE_CHECKING:
     from motor.motor_asyncio import AsyncIOMotorDatabase
@@ -203,6 +204,69 @@ async def get_metrics(
 ) -> Dict[str, Any]:
     """Get current analytics metrics"""
     return await get_real_time_metrics(db)
+
+@app.post("/t/{tracking_id}")
+async def track_scan(
+    tracking_id: str,
+    request: Request,
+    db = Depends(get_database),
+    redis = Depends(get_redis_client)
+):
+    """Track vCard scan from QR code"""
+    try:
+        # Get vCard from tracking ID
+        vcard = await db.vcards.find_one({"tracking_id": tracking_id})
+        if not vcard:
+            logger.warning(f"No vCard found for tracking ID: {tracking_id}")
+            return Response(status_code=204)
+        
+        # Create scan event
+        scan_event = ScanTrackingEvent(
+            tracking_id=tracking_id,
+            vcard_id=str(vcard["_id"]),
+            user_agent=request.headers.get("user-agent"),
+            ip_address=request.client.host,
+            headers=dict(request.headers),
+            device_info={
+                "browser": request.headers.get("sec-ch-ua"),
+                "platform": request.headers.get("sec-ch-ua-platform"),
+                "mobile": request.headers.get("sec-ch-ua-mobile")
+            }
+        )
+        
+        # Store in Redis for real-time updates
+        await redis.lpush(
+            f"scans:{tracking_id}",
+            scan_event.json()
+        )
+        await redis.expire(f"scans:{tracking_id}", 86400)  # Expire after 24 hours
+        
+        # Update MongoDB
+        await db.vcards.update_one(
+            {"tracking_id": tracking_id},
+            {
+                "$inc": {"analytics.total_scans": 1},
+                "$set": {"analytics.last_scan": datetime.utcnow()},
+                "$push": {
+                    "analytics.scans": {
+                        "timestamp": scan_event.timestamp,
+                        "user_agent": scan_event.user_agent,
+                        "ip_address": scan_event.ip_address,
+                        "device_info": scan_event.device_info
+                    }
+                }
+            }
+        )
+        
+        # Store scan event in analytics collection
+        await db.scan_events.insert_one(scan_event.dict())
+        
+        logger.info(f"Tracked scan for vCard {vcard['_id']} with tracking ID {tracking_id}")
+        return Response(status_code=204)
+        
+    except Exception as e:
+        logger.error(f"Error tracking scan: {str(e)}")
+        return Response(status_code=204)  # Silent fail for tracking
 
 @app.get("/health")
 async def health_check() -> Dict[str, str]:

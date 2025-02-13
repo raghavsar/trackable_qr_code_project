@@ -67,11 +67,28 @@ export interface ShortLinkData {
   customAlias?: string
 }
 
-export interface VCardResponse extends VCardData {
-  _id: string
-  user_id: string
-  created_at: string
-  updated_at: string
+export interface VCardResponse {
+  id: string;
+  _id?: string;  // MongoDB ID
+  first_name: string;
+  last_name: string;
+  email: string;
+  mobile_number?: string;
+  work_number?: string;
+  profile_picture?: string;
+  company?: string;
+  title?: string;
+  website?: string;
+  address?: {
+    street?: string;
+    city?: string;
+    state?: string;
+    country?: string;
+    zip_code?: string;
+  };
+  notes?: string;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface ScanEntry {
@@ -102,17 +119,17 @@ export interface AnalyticsData {
 }
 
 export interface QRDesignOptions {
-  foreground_color: string;
-  background_color: string;
-  pattern_style: 'square' | 'rounded' | 'dots' | 'circular' | 'diamond' | 'special';
-  eye_style: 'square' | 'circle' | 'rounded' | 'flower';
-  error_correction: 'L' | 'M' | 'Q' | 'H';
-  box_size: number;
-  border: number;
+  pattern_style?: 'square' | 'rounded' | 'dots' | 'gapped' | 'vertical' | 'horizontal';
+  eye_style?: 'square' | 'circle';
+  foreground_color?: string;
+  background_color?: string;
   logo_url?: string;
   logo_size?: number;
   logo_background?: boolean;
   logo_round?: boolean;
+  error_correction?: 'L' | 'M' | 'Q' | 'H';
+  box_size?: number;
+  border?: number;
 }
 
 export interface QRTemplate {
@@ -125,4 +142,9 @@ export interface QRTemplate {
   user_id?: string;
   created_at?: string;
   updated_at?: string;
+}
+
+export interface QRGenerateRequest {
+  vcard_id: string;
+  design?: QRDesignOptions;
 } 

@@ -2,6 +2,7 @@ from datetime import datetime
 from typing import Optional, Dict, Any, List
 from pydantic import BaseModel, Field, EmailStr
 from bson import ObjectId
+import uuid
 
 class PyObjectId(ObjectId):
     @classmethod
@@ -47,7 +48,7 @@ class UserInDB(UserBase):
     updated_at: datetime
 
     class Config:
-        allow_population_by_field_name = True
+        populate_by_name = True
         arbitrary_types_allowed = True
         json_encoders = {
             ObjectId: str,
@@ -78,12 +79,34 @@ class VCardData(BaseModel):
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
     user_id: Optional[str] = None
+    tracking_id: Optional[str] = Field(default_factory=lambda: f"tr_{uuid.uuid4().hex[:6]}")
+    analytics: Optional[Dict] = Field(default_factory=lambda: {
+        "scans": [],
+        "last_scan": None,
+        "total_scans": 0
+    })
 
     class Config:
-        allow_population_by_field_name = True
+        populate_by_name = True
         arbitrary_types_allowed = True
         json_encoders = {
             ObjectId: str,
+            datetime: lambda dt: dt.isoformat(),
+        }
+
+class ScanTrackingEvent(BaseModel):
+    tracking_id: str
+    vcard_id: str
+    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    user_agent: Optional[str] = None
+    ip_address: Optional[str] = None
+    success: bool = True
+    device_info: Optional[Dict] = None
+    headers: Optional[Dict] = None
+
+    class Config:
+        populate_by_name = True
+        json_encoders = {
             datetime: lambda dt: dt.isoformat()
         }
 
@@ -98,7 +121,7 @@ class QRCode(BaseModel):
     total_scans: int = 0
 
     class Config:
-        allow_population_by_field_name = True
+        populate_by_name = True
         arbitrary_types_allowed = True
         json_encoders = {
             ObjectId: str,
@@ -153,7 +176,7 @@ class ScanEvent(BaseModel):
     timestamp: datetime
 
     class Config:
-        allow_population_by_field_name = True
+        populate_by_name = True
         arbitrary_types_allowed = True
         json_encoders = {
             ObjectId: str,

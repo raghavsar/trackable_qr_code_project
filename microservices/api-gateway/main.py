@@ -111,21 +111,12 @@ async def forward_request(request: Request, service_url: str, endpoint: str, use
             logger.info(f"Query params: {request.query_params}")
             
             # Get request body if present
-            body = None
-            if await request.body():
-                try:
-                    body = await request.json()
-                    logger.info("\n=== Request body ===")
-                    logger.info(f"Body: {json.dumps(body, indent=2)}")
-                except json.JSONDecodeError:
-                    logger.warning("Request has body but not JSON parseable")
-                    logger.warning(f"Raw body: {await request.body()}")
+            body = await request.body()
             
             # Prepare headers
-            headers = {
-                "Content-Type": "application/json",
-                "Accept": "application/json"
-            }
+            headers = dict(request.headers)
+            if "host" in headers:
+                del headers["host"]
             
             # Add auth headers if user is authenticated
             if user_id:
@@ -144,10 +135,28 @@ async def forward_request(request: Request, service_url: str, endpoint: str, use
                     request.method,
                     f"{service_url}{endpoint}",
                     params=params,
-                    json=body,
+                    content=body,
                     headers=headers
                 )
                 
+                # Get content type
+                content_type = response.headers.get("content-type", "").lower()
+                logger.info(f"Response content type: {content_type}")
+                
+                # Handle binary responses (like QR codes)
+                if "image/" in content_type or (response.content and response.content.startswith(b'\x89PNG')):
+                    logger.info("Detected binary response, returning raw content")
+                    return Response(
+                        content=response.content,
+                        media_type=content_type or "image/png",
+                        status_code=response.status_code,
+                        headers={
+                            "Content-Type": content_type or "image/png",
+                            "Content-Length": str(len(response.content))
+                        }
+                    )
+                
+                # Handle JSON responses
                 try:
                     response_data = response.json()
                     if response.status_code >= 400:
@@ -156,13 +165,12 @@ async def forward_request(request: Request, service_url: str, endpoint: str, use
                             detail=response_data.get("detail", "Request failed")
                         )
                     return response_data
-                    
                 except json.JSONDecodeError:
-                    logger.error("\n=== Failed to decode response as JSON ===")
-                    logger.error(f"Raw response: {response.text}")
-                    raise HTTPException(
-                        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                        detail="Invalid JSON response from service"
+                    # If not JSON and not binary, return raw response
+                    return Response(
+                        content=response.content,
+                        media_type=content_type or "application/octet-stream",
+                        status_code=response.status_code
                     )
                     
         except Exception as e:

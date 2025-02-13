@@ -1,7 +1,8 @@
 import type { QRCodeResponse, VCardData, LandingPageData, ShortLinkData, VCardResponse, QRTemplate, QRDesignOptions, AnalyticsResponse } from '@/types/api'
 import type { AnalyticsData } from '@/types/analytics'
 import { axiosInstance } from './axios'
-import axios from 'axios'
+import axios, { AxiosInstance } from 'axios'
+import type { QRGenerateRequest } from '../types/api'
 
 const API_URL = import.meta.env.VITE_API_URL;
 const API_VERSION = 'v1';
@@ -10,7 +11,13 @@ export const getApiUrl = (path: string): string => {
   return `${API_URL}/api/${API_VERSION}${path}`;
 };
 
-class QRService {
+export class QRService {
+  private api: AxiosInstance;
+
+  constructor(api: AxiosInstance) {
+    this.api = api;
+  }
+
   private getHeaders() {
     const token = localStorage.getItem('token')
     return {
@@ -20,36 +27,41 @@ class QRService {
   }
 
   async createVCard(data: VCardData): Promise<VCardResponse> {
-    const response = await axiosInstance.post('/vcards', data)
-    return response.data
+    const response = await this.api.post('/vcards', data);
+    const vcard = response.data;
+    // Ensure we have a valid ID
+    if (!vcard.id && vcard._id) {
+      vcard.id = vcard._id;
+    }
+    return vcard;
   }
 
-  async generateVCardQR(data: VCardData): Promise<QRCodeResponse> {
-    // First create the VCard
-    const vcard = await this.createVCard(data)
-    
-    // Then generate QR code with the VCard ID
-    const response = await axiosInstance.post('/qrcodes', { vcard_id: vcard._id })
-    return response.data
-  }
-
-  async generateLandingPageQR(data: LandingPageData): Promise<QRCodeResponse> {
-    const response = await axiosInstance.post('/qrcodes/landing-page', data)
-    return response.data
-  }
-
-  async generateShortLinkQR(data: ShortLinkData): Promise<QRCodeResponse> {
-    const response = await axiosInstance.post('/qrcodes/short-link', data)
-    return response.data
+  async generateQRCode(data: QRGenerateRequest): Promise<QRCodeResponse> {
+    // Ensure vcard_id is provided
+    if (!data.vcard_id) {
+      throw new Error('vcard_id is required');
+    }
+    const response = await this.api.post('/qrcodes', data);
+    return response.data;
   }
 
   async listQRCodes(): Promise<QRCodeResponse[]> {
-    const response = await axiosInstance.get('/qrcodes')
-    return response.data
+    const response = await this.api.get('/qrcodes');
+    return response.data;
   }
 
   async deleteQRCode(id: string): Promise<void> {
-    await axiosInstance.delete(`/qrcodes/${id}`)
+    await this.api.delete(`/qrcodes/${id}`);
+  }
+
+  async getQRCode(id: string): Promise<QRCodeResponse> {
+    const response = await this.api.get(`/qrcodes/${id}`);
+    return response.data;
+  }
+
+  async updateQRCode(id: string, data: QRGenerateRequest): Promise<QRCodeResponse> {
+    const response = await this.api.put(`/qrcodes/${id}`, data);
+    return response.data;
   }
 
   async getAnalytics(trackingId: string): Promise<AnalyticsResponse> {
@@ -112,122 +124,6 @@ class QRService {
     }
   }
 
-  async updateQRCode(qrId: string, data: VCardData): Promise<QRCodeResponse> {
-    try {
-      // First update the VCard
-      if (!data.vcard_id) {
-        console.error('VCard ID missing from data:', data)
-        throw new Error('VCard ID is required for update')
-      }
-
-      // Validate VCard ID format
-      if (!/^[0-9a-fA-F]{24}$/.test(data.vcard_id)) {
-        console.error('Invalid VCard ID format:', data.vcard_id)
-        throw new Error('Invalid VCard ID format')
-      }
-      
-      console.log('Updating VCard with ID:', data.vcard_id)
-      const vcardResponse = await axiosInstance.put(`/vcards/${data.vcard_id}`, {
-        first_name: data.first_name,
-        last_name: data.last_name,
-        email: data.email,
-        mobile_number: data.mobile_number,
-        work_number: data.work_number,
-        profile_picture: data.profile_picture,
-        company: data.company,
-        title: data.title,
-        website: data.website,
-        notes: data.notes,
-        address: data.address
-      })
-      console.log('VCard update response:', vcardResponse.data)
-      
-      console.log('VCard updated, now updating QR code with ID:', qrId)
-      // Then update QR code
-      const response = await axiosInstance.put(`/qrcodes/${qrId}`, {
-        vcard_id: data.vcard_id
-      })
-      
-      console.log('QR code update response:', response.data)
-      return response.data
-    } catch (error: any) {
-      console.error('Error updating QR code:', error)
-      if (error.response) {
-        console.error('Server response error:', error.response.status, error.response.data)
-      }
-      throw error
-    }
-  }
-
-  // Template methods
-  async createTemplate(template: Omit<QRTemplate, 'id' | 'user_id'>) {
-    try {
-      const response = await axios.post(
-        `${API_URL}/templates`,
-        template,
-        { headers: this.getHeaders() }
-      )
-      return response.data
-    } catch (error) {
-      console.error('Failed to create template:', error)
-      throw error
-    }
-  }
-
-  async listTemplates() {
-    try {
-      const response = await axios.get(
-        `${API_URL}/templates`,
-        { headers: this.getHeaders() }
-      )
-      return response.data
-    } catch (error) {
-      console.error('Failed to fetch templates:', error)
-      throw error
-    }
-  }
-
-  async getTemplate(templateId: string) {
-    try {
-      const response = await axios.get(
-        `${API_URL}/templates/${templateId}`,
-        { headers: this.getHeaders() }
-      )
-      return response.data
-    } catch (error) {
-      console.error('Failed to fetch template:', error)
-      throw error
-    }
-  }
-
-  async updateTemplate(templateId: string, template: Omit<QRTemplate, 'id' | 'user_id'>) {
-    try {
-      const response = await axios.put(
-        `${API_URL}/templates/${templateId}`,
-        template,
-        { headers: this.getHeaders() }
-      )
-      return response.data
-    } catch (error) {
-      console.error('Failed to update template:', error)
-      throw error
-    }
-  }
-
-  async deleteTemplate(templateId: string) {
-    try {
-      const response = await axios.delete(
-        `${API_URL}/templates/${templateId}`,
-        { headers: this.getHeaders() }
-      )
-      return response.data
-    } catch (error) {
-      console.error('Failed to delete template:', error)
-      throw error
-    }
-  }
-
-  // Update QR code with design
   async updateQRCodeWithDesign(
     qrId: string,
     data: VCardData & {
@@ -249,7 +145,7 @@ class QRService {
   }
 }
 
-export const qrService = new QRService()
+export const qrService = new QRService(axiosInstance)
 
 export class AnalyticsService {
   async getAnalytics(timeRange: string): Promise<AnalyticsData> {

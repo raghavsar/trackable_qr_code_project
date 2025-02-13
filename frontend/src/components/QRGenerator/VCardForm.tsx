@@ -13,6 +13,7 @@ import type { QRCodeResponse, VCardData } from '@/types/api'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../ui/dropdown-menu"
 import { ChevronDown, Download, Edit, Share2, Trash2, BarChart2 } from 'lucide-react'
 import QRCodeEditor from './QRCodeEditor'
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 
 interface FormData {
   first_name: string
@@ -99,57 +100,49 @@ export default function VCardForm() {
   }
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      const file = e.target.files[0]
-      const reader = new FileReader()
+    const file = e.target.files?.[0];
+    if (file) {
+      if (file.size > 5 * 1024 * 1024) { // 5MB limit
+        toast.error("Profile picture must be less than 5MB");
+        return;
+      }
+
+      const reader = new FileReader();
       reader.onloadend = () => {
         setFormData(prev => ({
           ...prev,
           profile_picture: reader.result as string
-        }))
-      }
-      reader.readAsDataURL(file)
+        }));
+      };
+      reader.readAsDataURL(file);
     }
-  }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     try {
       setLoading(true)
-
-      // Clean up the form data
-      const cleanData: VCardData = {
-        first_name: formData.first_name,
-        last_name: formData.last_name,
-        email: formData.email,
-        ...(formData.mobile_number && { mobile_number: formData.mobile_number }),
-        ...(formData.work_number && { work_number: formData.work_number }),
-        ...(formData.profile_picture && { profile_picture: formData.profile_picture }),
-        ...(formData.company && { company: formData.company }),
-        ...(formData.title && { title: formData.title }),
-        ...(formData.website && { website: formData.website }),
-        ...(formData.notes && { notes: formData.notes })
-      }
-
-      // Only include address if at least one field is filled
-      const hasAddressData = formData.address && Object.values(formData.address).some(value => value)
-      if (hasAddressData && formData.address) {
-        cleanData.address = {
-          ...(formData.address.street && { street: formData.address.street }),
-          ...(formData.address.city && { city: formData.address.city }),
-          ...(formData.address.state && { state: formData.address.state }),
-          ...(formData.address.country && { country: formData.address.country }),
-          ...(formData.address.zip_code && { zip_code: formData.address.zip_code })
+      // Create VCard first
+      const vcard = await qrService.createVCard(formData)
+      // Generate QR code with direct vCard data
+      const qrCode = await qrService.generateQRCode({
+        vcard_id: vcard._id || vcard.id,
+        design: {
+          pattern_style: 'square',
+          eye_style: 'square',
+          foreground_color: '#000000',
+          background_color: '#FFFFFF',
+          error_correction: 'H',
+          box_size: 10,
+          border: 4
         }
-      }
-
-      const response = await qrService.generateVCardQR(cleanData)
-      setQrCode(response)
-      // Update QR codes list with new code
-      setQrCodes(prev => [response, ...prev])
-      toast.success('QR Code generated successfully!')
+      })
+      setQrCode(qrCode)
+      toast.success('QR code generated successfully')
+      // Refresh QR code list
+      fetchQRCodes()
     } catch (error) {
-      console.error('Failed to generate vCard QR code:', error)
+      console.error('Failed to generate QR code:', error)
       toast.error('Failed to generate QR code')
     } finally {
       setLoading(false)
@@ -279,24 +272,21 @@ export default function VCardForm() {
                   
                   <div className="space-y-3">
                     <div className="space-y-1.5">
-                      <Label htmlFor="profile_picture">Profile Picture</Label>
-                      <Input
-                        id="profile_picture"
-                        name="profile_picture"
-                        type="file"
-                        accept="image/*"
-                        onChange={handleFileChange}
-                        className="cursor-pointer"
-                      />
-                      {formData.profile_picture && (
-                        <div className="mt-2">
-                          <img 
-                            src={formData.profile_picture} 
-                            alt="Profile Preview" 
-                            className="w-24 h-24 object-cover rounded-full"
-                          />
-                        </div>
-                      )}
+                      <Label>Profile Picture</Label>
+                      <div className="flex items-center space-x-4">
+                        <Avatar className="w-20 h-20">
+                          <AvatarImage src={formData.profile_picture} />
+                          <AvatarFallback>
+                            {formData.first_name?.[0]}{formData.last_name?.[0]}
+                          </AvatarFallback>
+                        </Avatar>
+                        <Input
+                          type="file"
+                          accept="image/*"
+                          onChange={handleFileChange}
+                          className="max-w-[300px]"
+                        />
+                      </div>
                     </div>
                   </div>
                   
@@ -331,7 +321,7 @@ export default function VCardForm() {
                         name="mobile_number"
                         value={formData.mobile_number || ""}
                         onChange={handleInputChange}
-                        placeholder="+1 (555) 123-4567"
+                        placeholder="Enter mobile number"
                       />
                     </div>
                     <div className="space-y-1.5">
@@ -341,7 +331,7 @@ export default function VCardForm() {
                         name="work_number"
                         value={formData.work_number || ""}
                         onChange={handleInputChange}
-                        placeholder="+1 (555) 987-6543"
+                        placeholder="Enter work number"
                       />
                     </div>
                   </div>

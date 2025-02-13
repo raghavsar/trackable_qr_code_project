@@ -2,6 +2,31 @@ from redis import asyncio as aioredis
 import json
 from datetime import datetime, timedelta
 from typing import Dict, Any, Optional
+import redis.asyncio as redis
+import os
+from fastapi import Depends
+import logging
+
+logger = logging.getLogger(__name__)
+
+class RedisClient:
+    _instance: Optional[redis.Redis] = None
+
+    @classmethod
+    async def get_instance(cls) -> redis.Redis:
+        if cls._instance is None:
+            redis_url = os.getenv("REDIS_URL", "redis://redis:6379/0")
+            logger.info(f"Connecting to Redis at {redis_url}")
+            cls._instance = redis.from_url(
+                redis_url,
+                encoding="utf-8",
+                decode_responses=True
+            )
+        return cls._instance
+
+async def get_redis_client() -> redis.Redis:
+    """FastAPI dependency for Redis client"""
+    return await RedisClient.get_instance()
 
 class RedisStore:
     def __init__(self, redis_url: str):
