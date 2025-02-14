@@ -1,8 +1,9 @@
 from datetime import datetime
 from typing import Optional, Dict, Any, List
-from pydantic import BaseModel, Field, EmailStr
+from pydantic import BaseModel, Field, EmailStr, validator
 from bson import ObjectId
 import uuid
+import re
 
 class PyObjectId(ObjectId):
     @classmethod
@@ -64,13 +65,14 @@ class AddressData(BaseModel):
     country: Optional[str] = None
 
 class VCardData(BaseModel):
+    """VCard data model aligned with VCard 3.0 format"""
     id: Optional[PyObjectId] = Field(default_factory=PyObjectId, alias="_id")
     first_name: str
     last_name: str
     email: str
     mobile_number: Optional[str] = None
     work_number: Optional[str] = None
-    profile_picture: Optional[str] = None  # Base64 encoded image or URL
+    profile_picture: Optional[str] = None  # URL or Base64
     company: Optional[str] = None
     title: Optional[str] = None
     website: Optional[str] = None
@@ -85,6 +87,38 @@ class VCardData(BaseModel):
         "last_scan": None,
         "total_scans": 0
     })
+
+    @validator('mobile_number', 'work_number')
+    def validate_phone(cls, v):
+        if v is None:
+            return v
+        # Remove any non-digit characters for validation
+        digits = ''.join(filter(str.isdigit, v))
+        if len(digits) < 10 or len(digits) > 15:
+            raise ValueError('Phone number must be between 10 and 15 digits')
+        return v
+
+    @validator('website')
+    def validate_website(cls, v):
+        if v is None:
+            return v
+        if not v.startswith(('http://', 'https://')):
+            v = 'https://' + v
+        return v
+
+    @validator('email')
+    def validate_email(cls, v):
+        if not re.match(r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$", v):
+            raise ValueError('Invalid email format')
+        return v
+
+    @validator('profile_picture')
+    def validate_profile_picture(cls, v):
+        if v is None:
+            return v
+        if not (v.startswith(('http://', 'https://', 'data:image/'))):
+            raise ValueError('Profile picture must be a URL or base64 image data')
+        return v
 
     class Config:
         populate_by_name = True

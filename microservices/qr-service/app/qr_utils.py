@@ -12,6 +12,7 @@ from io import BytesIO
 import logging
 import os
 from shared.models import QRDesignOptions
+import base64
 
 logger = logging.getLogger(__name__)
 
@@ -69,7 +70,10 @@ def process_logo(logo_url: str, add_background: bool = False, make_round: bool =
         raise 
 
 def format_phone_number(phone: str) -> str:
-    """Format phone number to E.164 format with Indian prefix"""
+    """Format phone number to E.164 format for VCard 3.0 compatibility"""
+    if not phone:
+        return ""
+        
     # Remove any non-digit characters
     phone = ''.join(filter(str.isdigit, phone))
     
@@ -77,85 +81,86 @@ def format_phone_number(phone: str) -> str:
     if phone.startswith('0'):
         phone = phone[1:]
     
-    # If number doesn't have country code, add +91
-    if not phone.startswith('91'):
+    # Handle different formats
+    if phone.startswith('+'):
+        phone = phone[1:]  # Remove + if exists
+    
+    # Add country code if missing (assuming Indian numbers)
+    if not phone.startswith('91') and len(phone) == 10:
         phone = f"91{phone}"
     
-    # Add + prefix
-    if not phone.startswith('+'):
-        phone = f"+{phone}"
+    # Validate length (international format)
+    if len(phone) < 11 or len(phone) > 15:
+        raise ValueError("Invalid phone number length")
     
-    return phone
+    # Format for VCard 3.0: +[country_code][number]
+    return f"+{phone}"
 
 def process_profile_photo(photo_data: str) -> tuple[str, str]:
     """Process profile photo and return vCard PHOTO type and value"""
     if photo_data.startswith('data:image'):
-        # Handle base64 encoded image
-        mime_type = photo_data.split(';')[0].split(':')[1]
-        base64_data = photo_data.split(',')[1]
-        return mime_type, base64_data
+        # For base64 data, we'll use URL instead to keep QR code small
+        logger.info("Converting base64 image to URL for QR code size optimization")
+        return "URL", photo_data
     else:
-        # Handle URL
+        # For URLs, just pass through
+        logger.info("Using direct URL for profile photo")
         return "URL", photo_data
 
 def generate_vcard_content(vcard_data: dict) -> str:
-    """Generate vCard content with tracking"""
+    """Generate vCard content with tracking using VCard 3.0 format for better compatibility and smaller QR codes"""
     # Ensure required fields are not None
     first_name = vcard_data.get('first_name', '')
     last_name = vcard_data.get('last_name', '')
     
-    logger.info(f"Generating vCard content for: {first_name} {last_name}")
+    logger.info(f"Generating vCard 3.0 content for: {first_name} {last_name}")
     
     vcard_lines = [
         "BEGIN:VCARD",
-        "VERSION:4.0",
-        "KIND:INDIVIDUAL",
+        "VERSION:3.0",
         f"N:{last_name};{first_name};;;",
-        f"FN:{first_name} {last_name}",
+        f"FN:{first_name} {last_name}"
     ]
     
-    # Add profile photo if exists
+    # Add profile photo if exists - optimized for QR code size
     if vcard_data.get('profile_picture'):
         try:
             photo_type, photo_value = process_profile_photo(vcard_data['profile_picture'])
-            if photo_type == "URL":
-                vcard_lines.append(f"PHOTO:{photo_value}")
-            else:
-                vcard_lines.append(f"PHOTO;ENCODING=b;TYPE={photo_type}:{photo_value}")
-            logger.info("Added profile picture to vCard")
+            # Always use URL format for smaller QR size
+            vcard_lines.append(f"PHOTO;VALUE=URI:{photo_value}")
+            logger.info("Added profile picture URL to vCard")
         except Exception as e:
             logger.error(f"Failed to process profile picture: {str(e)}")
     
-    # Add phone numbers if they exist and are not None
+    # Add phone numbers - simplified format for v3.0
     if vcard_data.get('mobile_number'):
         formatted_number = format_phone_number(vcard_data['mobile_number'])
-        vcard_lines.append(f"TEL;TYPE=CELL,VOICE:{formatted_number}")
+        vcard_lines.append(f"TEL;CELL:{formatted_number}")
         logger.info(f"Added mobile number: {formatted_number}")
     if vcard_data.get('work_number'):
         formatted_number = format_phone_number(vcard_data['work_number'])
-        vcard_lines.append(f"TEL;TYPE=WORK,VOICE:{formatted_number}")
+        vcard_lines.append(f"TEL;WORK:{formatted_number}")
         logger.info(f"Added work number: {formatted_number}")
     
-    # Add email if it exists and is not None
+    # Add email - simplified for v3.0
     if vcard_data.get('email'):
-        vcard_lines.append(f"EMAIL;TYPE=WORK,INTERNET:{vcard_data['email']}")
+        vcard_lines.append(f"EMAIL:{vcard_data['email']}")
         logger.info(f"Added email: {vcard_data['email']}")
     
-    # Add organization and title if they exist and are not None
+    # Add organization and title - simplified for v3.0
     if vcard_data.get('company'):
         vcard_lines.append(f"ORG:{vcard_data['company']}")
         logger.info(f"Added company: {vcard_data['company']}")
     if vcard_data.get('title'):
         vcard_lines.append(f"TITLE:{vcard_data['title']}")
-        vcard_lines.append(f"ROLE:{vcard_data['title']}")
         logger.info(f"Added title: {vcard_data['title']}")
     
-    # Add website if it exists and is not None
+    # Add website - simplified for v3.0
     if vcard_data.get('website'):
         vcard_lines.append(f"URL:{vcard_data['website']}")
         logger.info(f"Added website: {vcard_data['website']}")
     
-    # Add address if it exists and has any non-None values
+    # Add address - simplified for v3.0
     if vcard_data.get('address'):
         addr = vcard_data['address']
         if any(addr.get(field) for field in ['street', 'city', 'state', 'zip_code', 'country']):
@@ -168,24 +173,18 @@ def generate_vcard_content(vcard_data: dict) -> str:
                 addr.get('zip_code', ''),
                 addr.get('country', '')
             ]
-            vcard_lines.append(f"ADR;TYPE=WORK:{';'.join(adr_parts)}")
+            vcard_lines.append(f"ADR:{';'.join(adr_parts)}")
             logger.info(f"Added address: {', '.join(filter(None, adr_parts))}")
     
-    # Add tracking if tracking_id exists
-    if vcard_data.get('tracking_id'):
-        api_gateway_url = os.getenv('API_GATEWAY_URL', 'http://localhost:8000')
-        tracking_url = f"{api_gateway_url}/t/{vcard_data['tracking_id']}"
-        vcard_lines.extend([
-            f"X-TRACKING-ID:{vcard_data['tracking_id']}",
-            f"NOTE:Contact created via QR Code. View profile: {tracking_url}"
-        ])
-        logger.info(f"Added tracking URL: {tracking_url}")
+    # Add user notes only
+    if vcard_data.get('notes'):
+        vcard_lines.append(f"NOTE:{vcard_data['notes']}")
+        logger.info(f"Added user notes: {vcard_data['notes']}")
     
     vcard_lines.append("END:VCARD")
     
     vcard_content = "\r\n".join(vcard_lines)
-    logger.info("Generated vCard content:")
-    logger.info(vcard_content)
+    logger.info("Generated vCard 3.0 content")
     
     return vcard_content
 
@@ -196,15 +195,29 @@ async def generate_vcard_qr(vcard_data: dict, style_config: QRDesignOptions) -> 
     vcard_content = generate_vcard_content(vcard_data)
     logger.info(f"Using QR design options: {style_config.dict()}")
     
-    qr = qrcode.QRCode(
-        version=None,
-        error_correction=getattr(qrcode.constants, f"ERROR_CORRECT_{style_config.error_correction}"),
-        box_size=style_config.box_size,
-        border=style_config.border,
-    )
-    qr.add_data(vcard_content)
-    qr.make(fit=True)
-    logger.info(f"Created QR code with version {qr.version} and error correction {style_config.error_correction}")
+    # Try different error correction levels if data is too large
+    error_levels = ['H', 'Q', 'M', 'L']
+    current_level_idx = error_levels.index(style_config.error_correction)
+    
+    for level in error_levels[current_level_idx:]:
+        try:
+            qr = qrcode.QRCode(
+                version=None,
+                error_correction=getattr(qrcode.constants, f"ERROR_CORRECT_{level}"),
+                box_size=style_config.box_size,
+                border=style_config.border,
+            )
+            qr.add_data(vcard_content)
+            qr.make(fit=True)
+            
+            if qr.version <= 40:  # Valid version found
+                logger.info(f"Created QR code with version {qr.version} and error correction {level}")
+                break
+        except Exception as e:
+            logger.warning(f"Failed with error correction level {level}: {str(e)}")
+            continue
+    else:
+        raise ValueError("Data too large for QR code even with lowest error correction")
     
     # Get module drawer based on style
     module_drawer = get_module_drawer(style_config.pattern_style)

@@ -40,12 +40,12 @@ export interface VCardData {
   first_name: string
   last_name: string
   email: string
-  mobile_number?: string
-  work_number?: string
-  profile_picture?: string
-  company?: string
-  title?: string
-  website?: string
+  mobile_number?: string  // TEL;CELL in v3.0
+  work_number?: string    // TEL;WORK in v3.0
+  profile_picture?: string  // PHOTO;VALUE=URL or PHOTO;ENCODING=b in v3.0
+  company?: string  // ORG in v3.0
+  title?: string   // TITLE in v3.0
+  website?: string // URL in v3.0
   address?: {
     street?: string
     city?: string
@@ -53,7 +53,7 @@ export interface VCardData {
     country?: string
     zip_code?: string
   }
-  notes?: string
+  notes?: string  // NOTE in v3.0
 }
 
 export interface LandingPageData {
@@ -73,12 +73,12 @@ export interface VCardResponse {
   first_name: string;
   last_name: string;
   email: string;
-  mobile_number?: string;
-  work_number?: string;
-  profile_picture?: string;
-  company?: string;
-  title?: string;
-  website?: string;
+  mobile_number?: string;  // TEL;CELL in v3.0
+  work_number?: string;    // TEL;WORK in v3.0
+  profile_picture?: string;  // PHOTO;VALUE=URL or PHOTO;ENCODING=b in v3.0
+  company?: string;  // ORG in v3.0
+  title?: string;   // TITLE in v3.0
+  website?: string; // URL in v3.0
   address?: {
     street?: string;
     city?: string;
@@ -86,7 +86,7 @@ export interface VCardResponse {
     country?: string;
     zip_code?: string;
   };
-  notes?: string;
+  notes?: string;  // NOTE in v3.0
   created_at: string;
   updated_at: string;
 }

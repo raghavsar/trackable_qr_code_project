@@ -53,31 +53,29 @@ def get_device_info(user_agent_string: str):
     }
 
 def generate_vcard(vcard_data: dict) -> bytes:
-    """Generate .vcf file content using VCard 4.0 format for better compatibility"""
+    """Generate .vcf file content using VCard 3.0 format for better compatibility"""
     vcard_lines = [
         "BEGIN:VCARD",
-        "VERSION:4.0",
-        "KIND:INDIVIDUAL",
+        "VERSION:3.0",
         f"N:{vcard_data['last_name']};{vcard_data['first_name']};;;",
-        f"FN:{vcard_data['first_name']} {vcard_data['last_name']}",
+        f"FN:{vcard_data['first_name']} {vcard_data['last_name']}"
     ]
     
-    # Add phone numbers with proper typing
+    # Add phone numbers with simplified typing
     if vcard_data.get('mobile_number'):
-        vcard_lines.append(f"TEL;TYPE=CELL,VOICE:{vcard_data['mobile_number']}")
+        vcard_lines.append(f"TEL;CELL:{vcard_data['mobile_number']}")
     if vcard_data.get('work_number'):
-        vcard_lines.append(f"TEL;TYPE=WORK,VOICE:{vcard_data['work_number']}")
+        vcard_lines.append(f"TEL;WORK:{vcard_data['work_number']}")
     
-    # Add email with proper typing
+    # Add email with simplified typing
     if vcard_data.get('email'):
-        vcard_lines.append(f"EMAIL;TYPE=WORK,INTERNET:{vcard_data['email']}")
+        vcard_lines.append(f"EMAIL:{vcard_data['email']}")
     
     # Add organization and title
     if vcard_data.get('company'):
         vcard_lines.append(f"ORG:{vcard_data['company']}")
     if vcard_data.get('title'):
         vcard_lines.append(f"TITLE:{vcard_data['title']}")
-        vcard_lines.append(f"ROLE:{vcard_data['title']}")  # Add ROLE for better compatibility
     
     # Add website
     if vcard_data.get('website'):
@@ -95,7 +93,7 @@ def generate_vcard(vcard_data: dict) -> bytes:
             addr.get('zip_code', ''),
             addr.get('country', '')
         ]
-        vcard_lines.append(f"ADR;TYPE=WORK:{';'.join(adr_parts)}")
+        vcard_lines.append(f"ADR:{';'.join(adr_parts)}")
     
     vcard_lines.append("END:VCARD")
     return "\r\n".join(vcard_lines).encode('utf-8')

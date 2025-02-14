@@ -9,6 +9,7 @@ import logging
 import json
 import base64
 from PIL import Image
+import requests
 
 logger = logging.getLogger(__name__)
 
@@ -193,7 +194,7 @@ class StorageService:
 
     async def upload_profile_photo(self, photo_data: str, user_id: str, vcard_id: str = None) -> Optional[str]:
         """
-        Upload a profile photo to MinIO
+        Upload a profile photo to MinIO and return a publicly accessible URL
         Args:
             photo_data: Base64 string or URL of the photo
             user_id: User ID for the photo
@@ -211,18 +212,19 @@ class StorageService:
                 # Process image to reduce size if needed
                 img = Image.open(BytesIO(image_data))
                 
-                # Resize if too large (max 800x800)
-                if max(img.size) > 800:
-                    img.thumbnail((800, 800), Image.Resampling.LANCZOS)
+                # Resize if too large (max 400x400 for vCard compatibility)
+                if max(img.size) > 400:
+                    img.thumbnail((400, 400), Image.Resampling.LANCZOS)
                 
                 # Convert to RGB if needed
                 if img.mode in ('RGBA', 'P'):
                     img = img.convert('RGB')
                 
-                # Save to bytes
+                # Save to bytes with compression
                 output = BytesIO()
-                img.save(output, format=format_type, quality=85, optimize=True)
+                img.save(output, format='JPEG', quality=85, optimize=True)
                 image_data = output.getvalue()
+                format_type = 'jpeg'  # Force JPEG for better compatibility
                 
                 # Generate filename with timestamp
                 timestamp = datetime.utcnow().timestamp()
@@ -235,8 +237,33 @@ class StorageService:
                 # If it's already a URL, check if it's our MinIO URL
                 if self.public_endpoint in photo_data:
                     return photo_data
+                    
                 # For external URLs, download and process
-                return photo_data
+                try:
+                    response = requests.get(photo_data, timeout=5)
+                    response.raise_for_status()
+                    img = Image.open(BytesIO(response.content))
+                    
+                    # Process image same as base64
+                    if max(img.size) > 400:
+                        img.thumbnail((400, 400), Image.Resampling.LANCZOS)
+                    
+                    if img.mode in ('RGBA', 'P'):
+                        img = img.convert('RGB')
+                    
+                    output = BytesIO()
+                    img.save(output, format='JPEG', quality=85, optimize=True)
+                    image_data = output.getvalue()
+                    format_type = 'jpeg'
+                    
+                    timestamp = datetime.utcnow().timestamp()
+                    if vcard_id:
+                        filename = f"users/{user_id}/pfp_vcard/{vcard_id}_{timestamp}.{format_type}"
+                    else:
+                        filename = f"users/{user_id}/profile_photos/profile_{timestamp}.{format_type}"
+                except Exception as e:
+                    logger.error(f"Failed to process external URL: {str(e)}")
+                    return photo_data
 
             # Upload to MinIO
             self.client.put_object(
@@ -244,7 +271,7 @@ class StorageService:
                 object_name=filename,
                 data=BytesIO(image_data),
                 length=len(image_data),
-                content_type=f"image/{format_type}"
+                content_type=f"image/jpeg"
             )
             
             # Return public URL
