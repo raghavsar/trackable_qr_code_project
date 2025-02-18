@@ -19,6 +19,7 @@ import VCardForm from "@/components/QRGenerator/VCardForm"
 import QRCodeList from "@/components/QRGenerator/QRCodeList"
 import { useEffect } from "react"
 import { useNavigate } from "react-router-dom"
+import { LandingPage } from "./components/LandingPage"
 
 // VCard Redirect Component
 function VCardRedirect() {
@@ -60,37 +61,39 @@ function App() {
             <AuthProvider>
               <Routes>
                 <Route path="/r/:id" element={<VCardRedirect />} />
-                <Route path="/" element={<ProtectedRoute><Layout /></ProtectedRoute>}>
+                <Route path="/" element={<Layout />}>
                   <Route index element={
-                    <Tabs defaultValue="qr-codes" className="space-y-6">
-                      <TabsList>
-                        <TabsTrigger value="qr-codes">QR Codes</TabsTrigger>
-                        <TabsTrigger value="pages">Pages</TabsTrigger>
-                        <TabsTrigger value="short-links">Short Links</TabsTrigger>
-                      </TabsList>
+                    <ProtectedRoute>
+                      <Tabs defaultValue="qr-codes" className="space-y-6">
+                        <TabsList>
+                          <TabsTrigger value="qr-codes">QR Codes</TabsTrigger>
+                          <TabsTrigger value="pages">Pages</TabsTrigger>
+                          <TabsTrigger value="short-links">Short Links</TabsTrigger>
+                        </TabsList>
 
-                      <TabsContent value="qr-codes" className="space-y-8">
-                        <div className="grid gap-6">
-                          <div className="space-y-4">
-                            <h2 className="text-2xl font-bold">Create New QR Code</h2>
-                            <VCardForm />
+                        <TabsContent value="qr-codes" className="space-y-8">
+                          <div className="grid gap-6">
+                            <div className="space-y-4">
+                              <h2 className="text-2xl font-bold">Create New QR Code</h2>
+                              <VCardForm />
+                            </div>
+
+                            <div className="space-y-4">
+                              <h2 className="text-2xl font-bold">Your QR Codes</h2>
+                              <QRCodeList />
+                            </div>
                           </div>
+                        </TabsContent>
 
-                          <div className="space-y-4">
-                            <h2 className="text-2xl font-bold">Your QR Codes</h2>
-                            <QRCodeList />
-                          </div>
-                        </div>
-                      </TabsContent>
+                        <TabsContent value="pages">
+                          <p>Landing pages coming soon...</p>
+                        </TabsContent>
 
-                      <TabsContent value="pages">
-                        <p>Landing pages coming soon...</p>
-                      </TabsContent>
-
-                      <TabsContent value="short-links">
-                        <p>URL shortener coming soon...</p>
-                      </TabsContent>
-                    </Tabs>
+                        <TabsContent value="short-links">
+                          <p>URL shortener coming soon...</p>
+                        </TabsContent>
+                      </Tabs>
+                    </ProtectedRoute>
                   } />
                   <Route path="/profile" element={
                     <ProtectedRoute>
@@ -113,6 +116,7 @@ function App() {
                     </ProtectedRoute>
                   } />
                 </Route>
+                <Route path="/landing" element={<LandingPage />} />
                 <Route path="/auth/login" element={<LoginPage />} />
                 <Route path="/auth/register" element={<RegisterPage />} />
                 <Route path="/auth/google/callback" element={<GoogleCallback />} />

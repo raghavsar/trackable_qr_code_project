@@ -16,6 +16,7 @@ import {
 import { useNavigate, useLocation, Outlet } from "react-router-dom"
 import { useAuth } from "@/hooks/useAuth"
 import { ErrorBoundary } from "./ErrorBoundary"
+import { LandingPage } from "./LandingPage"
 
 // Loading spinner component
 const LoadingSpinner = () => (
@@ -42,33 +43,10 @@ export function Layout() {
     return <LoadingSpinner />
   }
 
-  // If not authenticated, show login prompt
+  // If not authenticated, show landing page
   if (!isAuthenticated) {
-    console.log('Not authenticated, showing login prompt')
-    return (
-      <div className="min-h-screen bg-gray-50">
-        <header className="border-b bg-white">
-          <div className="container max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
-            <div className="flex items-center space-x-4">
-              <h1 className="text-xl font-semibold">QR Code Generator</h1>
-            </div>
-            <Button onClick={() => navigate('/auth/login')}>
-              Login
-            </Button>
-          </div>
-        </header>
-
-        <div className="container max-w-5xl mx-auto p-4">
-          <div className="text-center py-12">
-            <h2 className="text-2xl font-bold mb-4">Welcome to QR Code Generator</h2>
-            <p className="text-gray-600 mb-8">Please login to create and manage your QR codes.</p>
-            <Button size="lg" onClick={() => navigate('/auth/login')}>
-              Login to Get Started
-            </Button>
-          </div>
-        </div>
-      </div>
-    )
+    console.log('Not authenticated, showing landing page')
+    return <LandingPage />
   }
 
   // Show loading state if authenticated but user data not loaded yet
@@ -122,57 +100,7 @@ export function Layout() {
 
       <main className="container max-w-7xl mx-auto p-4">
         <ErrorBoundary>
-          {location.pathname === '/' ? (
-            <Tabs defaultValue="vcard" className="space-y-4">
-              <TabsList>
-                <TabsTrigger value="vcard">
-                  <Contact2 className="h-4 w-4 mr-2" />
-                  VCard
-                </TabsTrigger>
-                <TabsTrigger value="landing-page">
-                  <FileText className="h-4 w-4 mr-2" />
-                  Landing Page
-                </TabsTrigger>
-                <TabsTrigger value="short-link">
-                  <Link2 className="h-4 w-4 mr-2" />
-                  Short Link
-                </TabsTrigger>
-                <TabsTrigger value="analytics" onClick={() => navigate('/analytics')}>
-                  <BarChart3 className="h-4 w-4 mr-2" />
-                  Analytics
-                </TabsTrigger>
-              </TabsList>
-              
-              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7">
-                <Card className="p-4 col-span-full">
-                  <TabsContent value="vcard" className="m-0">
-                    <ErrorBoundary>
-                      <VCardForm />
-                    </ErrorBoundary>
-                  </TabsContent>
-                  <TabsContent value="landing-page" className="m-0">
-                    <ErrorBoundary>
-                      <LandingPageForm />
-                    </ErrorBoundary>
-                  </TabsContent>
-                  <TabsContent value="short-link" className="m-0">
-                    <ErrorBoundary>
-                      <ShortLinkForm />
-                    </ErrorBoundary>
-                  </TabsContent>
-                </Card>
-                
-                {/* Temporarily disabled to reduce error logs */}
-                {/* <div className="col-span-full lg:col-span-3">
-                  <ErrorBoundary>
-                    <GeneratedQRList />
-                  </ErrorBoundary>
-                </div> */}
-              </div>
-            </Tabs>
-          ) : (
-            <Outlet />
-          )}
+          <Outlet />
         </ErrorBoundary>
       </main>
     </div>
