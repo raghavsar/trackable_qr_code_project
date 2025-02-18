@@ -1,0 +1,142 @@
+Here's a comprehensive prompt for implementing the real-time analytics system:
+
+```markdown
+# Real-Time Analytics System Implementation Plan
+
+## Project Context
+We're enhancing our QR code analytics system with real-time capabilities. The current system has basic analytics with SSE (Server-Sent Events), but we need to upgrade to a more robust real-time system.
+
+## Current Implementation
+- Basic MongoDB storage for scan events
+- Simple Redis caching
+- SSE for real-time updates
+- Basic aggregation logic
+
+## Required Enhancements
+
+### 1. Redis Enhancement
+**Objective**: Implement comprehensive Redis caching and rate limiting
+- Set up Redis service in docker-compose
+- Implement enhanced RedisStore class with:
+  - Rate limiting
+  - Caching layers
+  - Counter management
+  - Data expiration policies
+
+### 2. WebSocket Implementation
+**Objective**: Replace SSE with WebSocket for better real-time capabilities
+- Create WebSocket connection manager
+- Implement real-time event broadcasting
+- Add channel subscription system
+- Handle connection lifecycle
+- Implement reconnection logic
+- Add heartbeat mechanism
+
+### 3. MongoDB Optimization
+**Objective**: Optimize data storage and retrieval
+- Design efficient schema for scan events
+- Implement indexing strategy
+- Set up data TTL (Time To Live)
+- Create aggregation pipelines
+- Implement data partitioning
+
+### 4. Cron Jobs System
+**Objective**: Automate data aggregation and maintenance
+- Implement daily metrics aggregation
+- Set up data cleanup jobs
+- Create reporting system
+- Add monitoring and logging
+- Implement error recovery
+
+### 5. Frontend Real-Time Features
+**Objective**: Create responsive real-time UI
+- Implement WebSocket client
+- Add real-time data visualization
+- Create live updating components
+- Handle offline/online states
+- Add data synchronization
+
+## Technical Requirements
+
+### Backend (Python/FastAPI)
+```python
+# Example structures needed:
+
+class WebSocketManager:
+    async def connect(self)
+    async def disconnect(self)
+    async def broadcast(self, message)
+    async def subscribe(self, channel)
+
+class EnhancedRedisStore:
+    async def increment_with_rate_limit(self, key, limit)
+    async def cache_analytics_data(self, key, data)
+    async def get_cached_analytics(self, key)
+
+class AnalyticsCronJobs:
+    async def run_daily_aggregation(self)
+    async def cleanup_old_data(self)
+    async def generate_reports(self)
+```
+
+### Frontend (React/TypeScript)
+```typescript
+interface WebSocketAnalytics {
+    connect(): void;
+    disconnect(): void;
+    subscribe(channel: string): void;
+    unsubscribe(channel: string): void;
+}
+
+interface RealTimeAnalyticsHook {
+    data: AnalyticsData;
+    isConnected: boolean;
+    error: Error | null;
+}
+```
+
+## Implementation Phases
+
+### Phase 1: Infrastructure Setup
+1. Redis service configuration
+2. WebSocket server setup
+3. MongoDB optimization
+
+### Phase 2: Core Features
+1. Enhanced Redis store implementation
+2. WebSocket manager implementation
+3. Cron jobs setup
+
+### Phase 3: Frontend Integration
+1. WebSocket client implementation
+2. Real-time UI components
+3. Error handling and recovery
+
+### Phase 4: Testing & Optimization
+1. Load testing
+2. Performance optimization
+3. Error recovery testing
+
+## Expected Deliverables
+1. Enhanced Redis caching system
+2. WebSocket-based real-time updates
+3. Optimized MongoDB schema and queries
+4. Automated cron jobs
+5. Real-time frontend components
+
+## Success Metrics
+1. Real-time update latency < 100ms
+2. System handles 1000+ concurrent connections
+3. Cache hit rate > 90%
+4. Zero data loss during aggregation
+5. Smooth degradation under load
+
+## Additional Considerations
+1. Error handling strategies
+2. Fallback mechanisms
+3. Data consistency
+4. Security measures
+5. Scalability planning
+```
+
+This prompt provides a structured approach to implementing the real-time analytics system. Each section can be tackled independently while maintaining the overall system cohesion. Would you like me to expand on any particular section or provide more specific implementation details?
