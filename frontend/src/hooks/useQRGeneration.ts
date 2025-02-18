@@ -1,113 +1,96 @@
 import { useState } from 'react';
-import { qrService } from '../services/qrService';
-import {
-  QRGenerateRequest,
-  QRGenerateResponse,
-  QRGenerationError,
-  QRPreviewRequest,
-  QRPreviewResponse
-} from '../types/api';
+import { QRDesignOptions, QRGenerateResponse, QRGenerationError, QRPreviewRequest, QRPreviewResponse } from '../types/api';
+
+export const defaultQRStyle: QRDesignOptions = {
+    box_size: 10,
+    border: 4,
+    foreground_color: "#000000",
+    background_color: "#FFFFFF",
+    eye_color: "#ff4d26",
+    module_color: "#0f50b5",
+    pattern_style: "dots",
+    error_correction: "Q",
+    logo_url: "microservices/qr-service/test/test_output/Phonon_Favicon.png",
+    logo_size: 0.15,
+    logo_background: true,
+    logo_round: true
+};
 
 interface QRGenerationState {
-  loading: boolean;
-  error: QRGenerationError | null;
-  qrCode: QRGenerateResponse | null;
-  preview: QRPreviewResponse | null;
+    isLoading: boolean;
+    error: string | null;
+    qrImageUrl: string | null;
 }
 
-export function useQRGeneration() {
-  const [state, setState] = useState<QRGenerationState>({
-    loading: false,
-    error: null,
-    qrCode: null,
-    preview: null
-  });
-
-  const generateQR = async (request: QRGenerateRequest) => {
-    setState(prev => ({ ...prev, loading: true, error: null }));
-    try {
-      const qrCode = await qrService.generateQR(request);
-      setState(prev => ({ ...prev, loading: false, qrCode }));
-      return qrCode;
-    } catch (error) {
-      const qrError = error as QRGenerationError;
-      setState(prev => ({ ...prev, loading: false, error: qrError }));
-      throw qrError;
-    }
-  };
-
-  const previewQR = async (request: QRPreviewRequest) => {
-    setState(prev => ({ ...prev, loading: true, error: null }));
-    try {
-      const preview = await qrService.previewQR(request);
-      setState(prev => ({ ...prev, loading: false, preview }));
-      return preview;
-    } catch (error) {
-      const qrError = error as QRGenerationError;
-      setState(prev => ({ ...prev, loading: false, error: qrError }));
-      throw qrError;
-    }
-  };
-
-  const updateQR = async (id: string, request: QRGenerateRequest) => {
-    setState(prev => ({ ...prev, loading: true, error: null }));
-    try {
-      const qrCode = await qrService.updateQRCode(id, request);
-      setState(prev => ({ ...prev, loading: false, qrCode }));
-      return qrCode;
-    } catch (error) {
-      const qrError = error as QRGenerationError;
-      setState(prev => ({ ...prev, loading: false, error: qrError }));
-      throw qrError;
-    }
-  };
-
-  const deleteQR = async (id: string) => {
-    setState(prev => ({ ...prev, loading: true, error: null }));
-    try {
-      await qrService.deleteQRCode(id);
-      setState(prev => ({ ...prev, loading: false, qrCode: null }));
-    } catch (error) {
-      const qrError = error as QRGenerationError;
-      setState(prev => ({ ...prev, loading: false, error: qrError }));
-      throw qrError;
-    }
-  };
-
-  const getQR = async (id: string) => {
-    setState(prev => ({ ...prev, loading: true, error: null }));
-    try {
-      const qrCode = await qrService.getQRCode(id);
-      setState(prev => ({ ...prev, loading: false, qrCode }));
-      return qrCode;
-    } catch (error) {
-      const qrError = error as QRGenerationError;
-      setState(prev => ({ ...prev, loading: false, error: qrError }));
-      throw qrError;
-    }
-  };
-
-  const clearError = () => {
-    setState(prev => ({ ...prev, error: null }));
-  };
-
-  const reset = () => {
-    setState({
-      loading: false,
-      error: null,
-      qrCode: null,
-      preview: null
+const useQRGeneration = () => {
+    const [state, setState] = useState<QRGenerationState>({
+        isLoading: false,
+        error: null,
+        qrImageUrl: null
     });
-  };
 
-  return {
-    ...state,
-    generateQR,
-    previewQR,
-    updateQR,
-    deleteQR,
-    getQR,
-    clearError,
-    reset
-  };
-} 
+    const generateQR = async (vCardData: Record<string, any>, designOptions: QRDesignOptions = defaultQRStyle) => {
+        setState(prev => ({ ...prev, isLoading: true, error: null }));
+        try {
+            const response = await fetch(`${import.meta.env.VITE_API_URL}/qr/generate`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    vcard_data: vCardData,
+                    design_options: designOptions
+                } as QRPreviewRequest)
+            });
+
+            if (!response.ok) {
+                const errorData: QRGenerationError = await response.json();
+                throw new Error(errorData.detail || 'Failed to generate QR code');
+            }
+
+            const data: QRGenerateResponse = await response.json();
+            setState(prev => ({ ...prev, qrImageUrl: data.qr_image_url, isLoading: false }));
+            return data;
+        } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : 'Failed to generate QR code';
+            setState(prev => ({ ...prev, error: errorMessage, isLoading: false }));
+            throw error;
+        }
+    };
+
+    const previewQR = async (vCardData: Record<string, any>, designOptions: QRDesignOptions = defaultQRStyle) => {
+        setState(prev => ({ ...prev, isLoading: true, error: null }));
+        try {
+            const response = await fetch(`${import.meta.env.VITE_API_URL}/qr/preview`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    vcard_data: vCardData,
+                    design_options: designOptions
+                } as QRPreviewRequest)
+            });
+
+            if (!response.ok) {
+                const errorData: QRGenerationError = await response.json();
+                throw new Error(errorData.detail || 'Failed to preview QR code');
+            }
+
+            const data: QRPreviewResponse = await response.json();
+            return data.qr_image_base64;
+        } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : 'Failed to preview QR code';
+            setState(prev => ({ ...prev, error: errorMessage, isLoading: false }));
+            throw error;
+        }
+    };
+
+    return {
+        ...state,
+        generateQR,
+        previewQR
+    };
+};
+
+export default useQRGeneration; 

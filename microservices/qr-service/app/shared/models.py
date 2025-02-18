@@ -19,12 +19,14 @@ class QRDesignOptions(BaseModel):
     border: int = Field(4, ge=0, description="Border must be non-negative")
     foreground_color: str = Field("#000000", description="Foreground color in hex format (#RRGGBB)")
     background_color: str = Field("#FFFFFF", description="Background color in hex format (#RRGGBB)")
-    pattern_style: str = Field("square", description="Pattern style for QR code")
-    error_correction: str = Field("L", description="Error correction level (L, M, Q, H)")
+    eye_color: str = Field("#ff4d26", description="Color for eye patterns in hex format (#RRGGBB)")
+    module_color: str = Field("#0f50b5", description="Color for data modules in hex format (#RRGGBB)")
+    pattern_style: str = Field("dots", description="Pattern style for QR code")
+    error_correction: str = Field("Q", description="Error correction level (L, M, Q, H)")
     logo_url: Optional[str] = None
-    logo_size: Optional[float] = Field(None, gt=0, lt=1, description="Logo size as a fraction of QR code size (0-1)")
-    logo_background: Optional[bool] = False
-    logo_round: Optional[bool] = False
+    logo_size: Optional[float] = Field(0.23, gt=0, lt=1, description="Logo size as a fraction of QR code size (0-1)")
+    logo_background: Optional[bool] = True
+    logo_round: Optional[bool] = True
 
     @validator('pattern_style')
     def validate_pattern_style(cls, v):
@@ -40,7 +42,7 @@ class QRDesignOptions(BaseModel):
             raise ValueError(f"Error correction must be one of: {', '.join(valid_levels)}")
         return v
 
-    @validator('foreground_color', 'background_color')
+    @validator('foreground_color', 'background_color', 'eye_color', 'module_color')
     def validate_color(cls, v):
         if not re.match(r'^#[0-9A-Fa-f]{6}$', v):
             raise ValueError("Colors must be in hex format (#RRGGBB)")

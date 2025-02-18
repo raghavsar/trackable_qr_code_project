@@ -15,6 +15,7 @@ import httpx
 from PIL import Image
 import requests
 from io import BytesIO
+import traceback
 
 from shared.models import QRCode, QRTemplate, QRDesignOptions, PyObjectId
 from .database import get_database
@@ -172,7 +173,23 @@ async def create_qr_code(request: Request, db = Depends(get_database)):
             logger.info("Using provided vcard_data")
 
         # Get style config
-        style_config = QRDesignOptions(**(data.get("design", data.get("style_config", {}))))
+        default_style = {
+            "box_size": 10,
+            "border": 4,
+            "foreground_color": "#000000",
+            "background_color": "#FFFFFF",
+            "eye_color": "#ff4d26",
+            "module_color": "#0f50b5",
+            "pattern_style": "dots",
+            "error_correction": "Q",
+            "logo_url": "/assets/images/phonon-favicon.png",
+            "logo_size": 0.23,
+            "logo_background": True,
+            "logo_round": True
+        }
+        # Merge with provided style config
+        style_data = {**default_style, **(data.get("design", data.get("style_config", {})))}
+        style_config = QRDesignOptions(**style_data)
         logger.info(f"Style config: {style_config.dict()}")
 
         # Handle profile photo if present
@@ -516,45 +533,45 @@ async def preview_qr_code_post(
     current_user: dict = Depends(get_current_user),
     db = Depends(get_database)
 ):
-    """Generate a preview of a QR code with specified design options."""
     try:
-        vcard_id = data.get("vcard_id")
-        if not vcard_id:
-            raise HTTPException(status_code=400, detail="vcard_id is required")
+        # Get vcard data
+        vcard_data = data.get("vcard_data", {})
+        if not vcard_data:
+            raise HTTPException(status_code=400, detail="vcard_data is required")
 
-        # Verify VCard ownership
-        vcard = await db.vcards.find_one({
-            "_id": PyObjectId(vcard_id),
-            "user_id": current_user["id"]
-        })
-        if not vcard:
-            raise HTTPException(status_code=404, detail="VCard not found")
+        # Get style config with defaults
+        default_style = {
+            "box_size": 10,
+            "border": 4,
+            "foreground_color": "#000000",
+            "background_color": "#FFFFFF",
+            "eye_color": "#ff4d26",
+            "module_color": "#0f50b5",
+            "pattern_style": "dots",
+            "error_correction": "Q",
+            "logo_url": "/assets/images/phonon-favicon.png",
+            "logo_size": 0.23,
+            "logo_background": True,
+            "logo_round": True
+        }
+        # Merge with provided style config
+        style_data = {**default_style, **(data.get("design_options", {}))}
+        style_config = QRDesignOptions(**style_data)
 
-        # Get design options
-        design = None
-        if "design" in data:
-            design = QRDesignOptions(**data["design"])
-
-        # Generate QR code with direct vCard data
-        qr_image_bytes = await generate_vcard_qr(vcard, design or QRDesignOptions())
-        qr_image = BytesIO(qr_image_bytes)
+        # Generate QR code
+        qr_code_bytes = await generate_vcard_qr(vcard_data, style_config)
         
         # Convert to base64
-        qr_image.seek(0)
-        base64_image = base64.b64encode(qr_image.read()).decode()
-        
-        return {
-            "preview_url": f"data:image/png;base64,{base64_image}"
-        }
-        
+        base64_qr = base64.b64encode(qr_code_bytes).decode('utf-8')
+        return {"qr_image_base64": f"data:image/png;base64,{base64_qr}"}
+
     except Exception as e:
-        logger.error(f"Error generating QR code preview: {str(e)}")
-        if isinstance(e, HTTPException):
-            raise e
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to generate QR code preview: {str(e)}"
-        )
+        logger.error("\n=== QR Code Preview Failed ===")
+        logger.error(f"Error type: {type(e).__name__}")
+        logger.error(f"Error message: {str(e)}")
+        logger.error("Full error details:")
+        logger.error(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/qrcodes/vcard/{vcard_id}")
 async def get_qr_code_by_vcard(

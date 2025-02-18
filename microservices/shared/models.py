@@ -163,17 +163,38 @@ class QRCode(BaseModel):
         }
 
 class QRDesignOptions(BaseModel):
-    pattern_style: str = "square"  # square, rounded, dots, gapped, vertical, horizontal
-    eye_style: str = "square"  # square, rounded, dots
-    foreground_color: str = "#000000"
-    background_color: str = "#FFFFFF"
-    error_correction: str = "H"  # L, M, Q, H
-    box_size: int = 10
-    border: int = 4
+    box_size: int = Field(10, gt=0, description="Box size must be positive")
+    border: int = Field(4, ge=0, description="Border must be non-negative")
+    foreground_color: str = Field("#000000", description="Foreground color in hex format (#RRGGBB)")
+    background_color: str = Field("#FFFFFF", description="Background color in hex format (#RRGGBB)")
+    eye_color: str = Field("#ff4d26", description="Color for eye patterns in hex format (#RRGGBB)")
+    module_color: str = Field("#0f50b5", description="Color for data modules in hex format (#RRGGBB)")
+    pattern_style: str = Field("dots", description="Pattern style for QR code")
+    error_correction: str = Field("Q", description="Error correction level (L, M, Q, H)")
     logo_url: Optional[str] = None
-    logo_size: float = 0.2  # Size relative to QR code (0.1 to 0.3)
-    logo_background: Optional[bool] = False
-    logo_round: Optional[bool] = False
+    logo_size: Optional[float] = Field(0.23, gt=0, lt=1, description="Logo size as a fraction of QR code size (0-1)")
+    logo_background: Optional[bool] = True
+    logo_round: Optional[bool] = True
+
+    @validator('pattern_style')
+    def validate_pattern_style(cls, v):
+        valid_patterns = ['square', 'rounded', 'dots', 'gapped', 'vertical', 'horizontal']
+        if v.lower() not in valid_patterns:
+            raise ValueError(f"Invalid pattern style. Must be one of: {', '.join(valid_patterns)}")
+        return v.lower()
+
+    @validator('error_correction')
+    def validate_error_correction(cls, v):
+        valid_levels = ['L', 'M', 'Q', 'H']
+        if v not in valid_levels:
+            raise ValueError(f"Error correction must be one of: {', '.join(valid_levels)}")
+        return v
+
+    @validator('foreground_color', 'background_color', 'eye_color', 'module_color')
+    def validate_color(cls, v):
+        if not re.match(r'^#[0-9A-Fa-f]{6}$', v):
+            raise ValueError("Colors must be in hex format (#RRGGBB)")
+        return v
 
     class Config:
         populate_by_name = True

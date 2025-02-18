@@ -1,19 +1,29 @@
+export interface QRDesignOptions {
+    box_size: number;
+    border: number;
+    foreground_color: string;
+    background_color: string;
+    eye_color: string;
+    module_color: string;
+    pattern_style: string;
+    error_correction: string;
+    logo_url?: string;
+    logo_size?: number;
+    logo_background?: boolean;
+    logo_round?: boolean;
+}
+
 export interface QRCodeResponse {
-  id: string
-  tracking_id: string
-  qr_image: string
-  qr_image_url: string
-  created_at: string
-  updated_at?: string
-  type: string
-  total_scans: number
-  metadata: {
-    vcard_id?: string
-    vcard_name?: string
-    [key: string]: any
-  }
-  design?: QRDesignOptions
-  template_id?: string
+    id: string
+    user_id: string;
+    object_name: string;
+    qr_image_url: string;
+    created_at: string;
+    updated_at: string;
+    total_scans: number;
+    type: string;
+    vcard_id: string;
+    design?: QRDesignOptions;
 }
 
 export interface AnalyticsResponse {
@@ -118,20 +128,6 @@ export interface AnalyticsData {
   }[]
 }
 
-export interface QRDesignOptions {
-  pattern_style?: 'square' | 'rounded' | 'dots' | 'gapped' | 'vertical' | 'horizontal';
-  eye_style?: 'square' | 'circle';
-  foreground_color?: string;
-  background_color?: string;
-  logo_url?: string;
-  logo_size?: number;
-  logo_background?: boolean;
-  logo_round?: boolean;
-  error_correction?: 'L' | 'M' | 'Q' | 'H';
-  box_size?: number;
-  border?: number;
-}
-
 export interface QRTemplate {
   id?: string;
   name: string;
@@ -147,4 +143,23 @@ export interface QRTemplate {
 export interface QRGenerateRequest {
   vcard_id: string;
   design?: QRDesignOptions;
+}
+
+export interface QRGenerateResponse {
+    qr_image_url: string;
+    object_name: string;
+}
+
+export interface QRGenerationError {
+    detail: string;
+    status_code: number;
+}
+
+export interface QRPreviewRequest {
+    vcard_data: Record<string, any>;
+    design_options: QRDesignOptions;
+}
+
+export interface QRPreviewResponse {
+    qr_image_base64: string;
 } 
