@@ -16,7 +16,6 @@ import { ReactQueryDevtools } from '@tanstack/react-query-devtools'
 import { GoogleOAuthProvider } from '@react-oauth/google'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import VCardForm from "@/components/QRGenerator/VCardForm"
-import QRCodeList from "@/components/QRGenerator/QRCodeList"
 import { useEffect } from "react"
 import { useNavigate } from "react-router-dom"
 import { LandingPage } from "./components/LandingPage"
@@ -32,8 +31,15 @@ function VCardRedirect() {
       return
     }
 
-    // Direct redirect without forcing VCF format
-    window.location.href = `http://192.168.7.154:8005/r/${id}`
+    // Get API URL from environment
+    const apiUrl = import.meta.env.VITE_API_URL
+    if (!apiUrl) {
+      console.error('API URL not configured')
+      return
+    }
+
+    // Redirect to the smart redirect endpoint
+    window.location.href = `${apiUrl}/r/${id}`
   }, [id, navigate])
 
   return (
@@ -80,7 +86,6 @@ function App() {
 
                             <div className="space-y-4">
                               <h2 className="text-2xl font-bold">Your QR Codes</h2>
-                              <QRCodeList />
                             </div>
                           </div>
                         </TabsContent>

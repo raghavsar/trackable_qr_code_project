@@ -14,6 +14,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { ChevronDown, Download, Edit, Share2, Trash2, BarChart2 } from 'lucide-react'
 import QRCodeEditor from './QRCodeEditor'
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import QRCodeList from './QRCodeList'
 
 interface FormData {
   first_name: string
@@ -58,27 +59,7 @@ export default function VCardForm() {
   
   const [loading, setLoading] = useState(false)
   const [qrCode, setQrCode] = useState<QRCodeResponse | null>(null)
-  const [qrCodes, setQrCodes] = useState<QRCodeResponse[]>([])
-  const [loadingQRCodes, setLoadingQRCodes] = useState(false)
   const [editingQRCode, setEditingQRCode] = useState<QRCodeResponse | null>(null)
-
-  const fetchQRCodes = async () => {
-    try {
-      setLoadingQRCodes(true)
-      const codes = await qrService.listQRCodes()
-      setQrCodes(codes)
-    } catch (error) {
-      console.error('Failed to fetch QR codes:', error)
-      toast.error('Failed to load QR codes')
-    } finally {
-      setLoadingQRCodes(false)
-    }
-  }
-
-  // Fetch QR codes on component mount
-  useEffect(() => {
-    fetchQRCodes()
-  }, [qrCode]) // Refresh when new QR code is generated
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target
@@ -128,19 +109,22 @@ export default function VCardForm() {
       const qrCode = await qrService.generateQRCode({
         vcard_id: vcard._id || vcard.id,
         design: {
-          pattern_style: 'square',
-          eye_style: 'square',
+          box_size: 10,
+          border: 4,
           foreground_color: '#000000',
           background_color: '#FFFFFF',
+          eye_color: '#000000',
+          module_color: '#000000',
+          pattern_style: 'square',
           error_correction: 'H',
-          box_size: 10,
-          border: 4
+          logo_url: undefined,
+          logo_size: undefined,
+          logo_background: false,
+          logo_round: false
         }
       })
       setQrCode(qrCode)
       toast.success('QR code generated successfully')
-      // Refresh QR code list
-      fetchQRCodes()
     } catch (error) {
       console.error('Failed to generate QR code:', error)
       toast.error('Failed to generate QR code')
@@ -170,58 +154,23 @@ export default function VCardForm() {
 
   const handleShare = async (qrCode: QRCodeResponse) => {
     try {
-      // Generate the redirect URL
-      const redirectUrl = `${window.location.origin}/r/${qrCode.metadata.vcard_id}`;
-
-      // Try Web Share API first
+      const redirectUrl = `${window.location.origin}/r/${qrCode.vcard_id}`;
+      
       if (navigator.share) {
-        try {
-          await navigator.share({
-            title: 'My VCard QR Code',
-            text: 'Scan this QR code or click to view my contact details',
-            url: redirectUrl
-          });
-          return;
-        } catch (shareError) {
-          console.log('Web Share API failed, falling back to clipboard', shareError);
-        }
-      }
-      
-      // Try Clipboard API next
-      if (navigator.clipboard && window.isSecureContext) {
-        try {
-          await navigator.clipboard.writeText(redirectUrl);
-          toast.success('VCard URL copied to clipboard!');
-          return;
-        } catch (clipboardError) {
-          console.log('Clipboard API failed, falling back to manual selection', clipboardError);
-        }
-      }
-      
-      // Fallback to manual selection
-      const textArea = document.createElement('textarea');
-      textArea.value = redirectUrl;
-      textArea.style.position = 'fixed';
-      textArea.style.left = '-999999px';
-      textArea.style.top = '-999999px';
-      document.body.appendChild(textArea);
-      textArea.focus();
-      textArea.select();
-      
-      try {
-        document.execCommand('copy');
-        textArea.remove();
-        toast.success('VCard URL copied to clipboard!');
-      } catch (fallbackError) {
-        console.error('Manual clipboard copy failed', fallbackError);
-        textArea.remove();
-        toast.error('Failed to copy URL. Please copy it manually: ' + redirectUrl);
+        await navigator.share({
+          title: 'My Digital Business Card',
+          text: 'Check out my digital business card!',
+          url: redirectUrl
+        });
+      } else {
+        await navigator.clipboard.writeText(redirectUrl);
+        toast.success('Link copied to clipboard!');
       }
     } catch (error) {
-      console.error('Failed to share VCard:', error);
-      toast.error('Failed to share VCard');
+      console.error('Error sharing:', error);
+      toast.error('Failed to share QR code');
     }
-  }
+  };
 
   const handleDelete = async (code: QRCodeResponse) => {
     try {
@@ -230,7 +179,6 @@ export default function VCardForm() {
       }
       
       await qrService.deleteQRCode(code.id)
-      setQrCodes(prev => prev.filter(c => c.id !== code.id))
       toast.success('QR code deleted successfully')
     } catch (error) {
       console.error('Failed to delete QR code:', error)
@@ -244,8 +192,6 @@ export default function VCardForm() {
 
   const handleUpdateComplete = () => {
     setEditingQRCode(null)
-    // Refresh QR codes list
-    fetchQRCodes()
   }
 
   // Add the analytics handler function
@@ -264,6 +210,7 @@ export default function VCardForm() {
       ) : (
         <>
           <CardContent className="p-4">
+            <h2 className="text-xl font-semibold mb-6">Create New QR Code</h2>
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 {/* Personal Details */}
@@ -459,88 +406,11 @@ export default function VCardForm() {
             </form>
           </CardContent>
 
-          {/* QR Codes List */}
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <h2 className="text-xl font-semibold">Your QR Codes</h2>
-              {loadingQRCodes && (
-                <div className="text-sm text-gray-500">Loading...</div>
-              )}
-            </div>
-            
-            {qrCodes.length === 0 && !loadingQRCodes ? (
-              <div className="text-center py-8 text-gray-500">
-                No QR codes generated yet. Create your first VCard above!
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                {qrCodes.map((code) => (
-                  <div key={code.id} className="bg-white rounded-lg shadow-md p-4 space-y-3">
-                    <div className="aspect-square relative">
-                      <img
-                        src={code.qr_image_url}
-                        alt="QR Code"
-                        className="w-full h-full object-contain"
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <p className="text-sm font-medium truncate">
-                        {code.metadata.vcard_name || 'VCard'}
-                      </p>
-                      <p className="text-xs text-gray-500">
-                        Created: {new Date(code.created_at).toLocaleDateString()}
-                      </p>
-                      <p className="text-xs text-gray-500">
-                        Scans: {code.total_scans}
-                      </p>
-                    </div>
-                    <div className="flex gap-2 justify-end">
-                      <Button 
-                        variant="outline" 
-                        size="sm"
-                        onClick={() => handleEdit(code)}
-                      >
-                        <Edit className="h-4 w-4" />
-                      </Button>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="outline" size="sm">
-                            <Download className="h-4 w-4 mr-1" />
-                            <ChevronDown className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent>
-                          <DropdownMenuItem onClick={() => handleDownload(code, 'png')}>
-                            Download PNG
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => handleDownload(code, 'svg')}>
-                            Download SVG
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => handleDownload(code, 'pdf')}>
-                            Download PDF
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                      <Button variant="outline" size="sm" onClick={() => handleShare(code)}>
-                        <Share2 className="h-4 w-4" />
-                      </Button>
-                      <Button variant="outline" size="sm" onClick={() => handleViewAnalytics(code)}>
-                        <BarChart2 className="h-4 w-4" />
-                      </Button>
-                      <Button 
-                        variant="outline" 
-                        size="sm" 
-                        onClick={() => handleDelete(code)}
-                        className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
+          <QRCodeList 
+            onEdit={handleEdit}
+            onShare={handleShare}
+            showAnalytics={true}
+          />
         </>
       )}
     </div>

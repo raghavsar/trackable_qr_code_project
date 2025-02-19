@@ -1,10 +1,4 @@
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Card } from "@/components/ui/card"
-import { FileText, Link2, Contact2, BarChart3, User, LogOut, Settings } from 'lucide-react'
-import VCardForm from "@/components/QRGenerator/VCardForm"
-import LandingPageForm from "@/components/QRGenerator/LandingPageForm"
-import ShortLinkForm from "@/components/QRGenerator/ShortLinkForm"
-import GeneratedQRList from "@/components/QRGenerator/GeneratedQRList"
+import { User, LogOut, Settings } from 'lucide-react'
 import { Button } from "./ui/button"
 import {
   DropdownMenu,
@@ -13,7 +7,7 @@ import {
   DropdownMenuTrigger,
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu"
-import { useNavigate, useLocation, Outlet } from "react-router-dom"
+import { useNavigate, Outlet } from "react-router-dom"
 import { useAuth } from "@/hooks/useAuth"
 import { ErrorBoundary } from "./ErrorBoundary"
 import { LandingPage } from "./LandingPage"
@@ -29,37 +23,21 @@ const LoadingSpinner = () => (
 )
 
 export function Layout() {
-  console.log('Layout component rendering')
-  
   const navigate = useNavigate()
-  const location = useLocation()
-  const { user, isAuthenticated, isLoading, logout } = useAuth()
+  const { isAuthenticated, isLoading, user, logout } = useAuth()
 
-  console.log('Auth state:', { isAuthenticated, isLoading, user })
-
-  // Show loading state while checking authentication
   if (isLoading) {
-    console.log('Showing loading spinner')
     return <LoadingSpinner />
   }
 
-  // If not authenticated, show landing page
-  if (!isAuthenticated) {
-    console.log('Not authenticated, showing landing page')
+  if (!isAuthenticated || !user) {
     return <LandingPage />
   }
 
-  // Show loading state if authenticated but user data not loaded yet
-  if (!user) {
-    console.log('User data not loaded, showing loading spinner')
-    return <LoadingSpinner />
-  }
-
-  console.log('Rendering main layout')
   return (
     <div className="min-h-screen bg-gray-50">
-      <header className="border-b bg-white">
-        <div className="container max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
+      <header className="bg-white border-b">
+        <div className="container max-w-7xl mx-auto h-16 px-4 flex items-center justify-between">
           <div className="flex items-center space-x-4">
             <h1 className="text-xl font-semibold">QR Code Generator</h1>
           </div>
