@@ -271,3 +271,72 @@ async def track_scan(
 @app.get("/health")
 async def health_check() -> Dict[str, str]:
     return {"status": "healthy"}
+
+@app.get("/api/v1/analytics/qr/{qr_id}")
+async def get_qr_analytics(
+    qr_id: str,
+    timeRange: str = "7d",
+    db = Depends(get_database)
+):
+    """Get analytics for a specific QR code."""
+    try:
+        logger.info(f"Fetching analytics for QR code: {qr_id}")
+        
+        # Parse time range
+        time_delta = {
+            "24h": timedelta(days=1),
+            "7d": timedelta(days=7),
+            "30d": timedelta(days=30),
+            "90d": timedelta(days=90)
+        }.get(timeRange, timedelta(days=7))
+        
+        start_time = datetime.utcnow() - time_delta
+        
+        # Get scan events for this QR code
+        pipeline = [
+            {
+                "$match": {
+                    "qr_id": qr_id,
+                    "timestamp": {"$gte": start_time}
+                }
+            },
+            {
+                "$group": {
+                    "_id": {
+                        "date": {"$dateToString": {"format": "%Y-%m-%d", "date": "$timestamp"}},
+                        "action": "$action_type"
+                    },
+                    "count": {"$sum": 1}
+                }
+            },
+            {
+                "$sort": {"_id.date": 1}
+            }
+        ]
+        
+        scan_events = await db.scan_events.aggregate(pipeline).to_list(None)
+        
+        # Format response
+        analytics_data = {
+            "qr_id": qr_id,
+            "timeRange": timeRange,
+            "total_scans": sum(event["count"] for event in scan_events),
+            "scan_history": [
+                {
+                    "date": event["_id"]["date"],
+                    "action": event["_id"]["action"],
+                    "count": event["count"]
+                }
+                for event in scan_events
+            ]
+        }
+        
+        logger.info(f"Successfully retrieved analytics for QR code {qr_id}")
+        return analytics_data
+        
+    except Exception as e:
+        logger.error(f"Error fetching QR code analytics: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error fetching analytics: {str(e)}"
+        )

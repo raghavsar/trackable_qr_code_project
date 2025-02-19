@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, useParams } from "react-router-dom"
+import { BrowserRouter, Routes, Route } from "react-router-dom"
 import { Layout } from "./components/Layout"
 import { Toaster } from "react-hot-toast"
 import AuthProvider from "./providers/AuthProvider"
@@ -16,41 +16,7 @@ import { ReactQueryDevtools } from '@tanstack/react-query-devtools'
 import { GoogleOAuthProvider } from '@react-oauth/google'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import VCardForm from "@/components/QRGenerator/VCardForm"
-import { useEffect } from "react"
-import { useNavigate } from "react-router-dom"
-import { LandingPage } from "./components/LandingPage"
-
-// VCard Redirect Component
-function VCardRedirect() {
-  const { id } = useParams()
-  const navigate = useNavigate()
-  
-  useEffect(() => {
-    if (!id) {
-      navigate('/')
-      return
-    }
-
-    // Get API URL from environment
-    const apiUrl = import.meta.env.VITE_API_URL
-    if (!apiUrl) {
-      console.error('API URL not configured')
-      return
-    }
-
-    // Redirect to the smart redirect endpoint
-    window.location.href = `${apiUrl}/r/${id}`
-  }, [id, navigate])
-
-  return (
-    <div className="min-h-screen flex items-center justify-center">
-      <div className="text-center space-y-4">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-900 mx-auto"></div>
-        <p className="text-lg">Preparing your contact...</p>
-      </div>
-    </div>
-  )
-}
+import VCardRedirect from "@/pages/VCardRedirect"
 
 const queryClient = new QueryClient()
 
@@ -65,6 +31,7 @@ function App() {
         <QueryClientProvider client={queryClient}>
           <BrowserRouter>
             <AuthProvider>
+              <Toaster position="top-right" />
               <Routes>
                 <Route path="/r/:id" element={<VCardRedirect />} />
                 <Route path="/" element={<Layout />}>
@@ -100,33 +67,15 @@ function App() {
                       </Tabs>
                     </ProtectedRoute>
                   } />
-                  <Route path="/profile" element={
-                    <ProtectedRoute>
-                      <ProfilePage />
-                    </ProtectedRoute>
-                  } />
-                  <Route path="/settings" element={
-                    <ProtectedRoute>
-                      <AccountSettings />
-                    </ProtectedRoute>
-                  } />
-                  <Route path="/analytics" element={
-                    <ProtectedRoute>
-                      <AnalyticsDashboard />
-                    </ProtectedRoute>
-                  } />
-                  <Route path="/analytics/qr/:id" element={
-                    <ProtectedRoute>
-                      <QRCodeAnalytics />
-                    </ProtectedRoute>
-                  } />
+                  <Route path="login" element={<LoginPage />} />
+                  <Route path="register" element={<RegisterPage />} />
+                  <Route path="profile" element={<ProfilePage />} />
+                  <Route path="settings" element={<AccountSettings />} />
+                  <Route path="auth/google/callback" element={<GoogleCallback />} />
+                  <Route path="analytics" element={<AnalyticsDashboard />} />
+                  <Route path="analytics/qr/:id" element={<QRCodeAnalytics />} />
                 </Route>
-                <Route path="/landing" element={<LandingPage />} />
-                <Route path="/auth/login" element={<LoginPage />} />
-                <Route path="/auth/register" element={<RegisterPage />} />
-                <Route path="/auth/google/callback" element={<GoogleCallback />} />
               </Routes>
-              <Toaster position="bottom-right" />
             </AuthProvider>
           </BrowserRouter>
           <ReactQueryDevtools initialIsOpen={false} />

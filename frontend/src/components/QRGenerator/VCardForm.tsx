@@ -59,7 +59,8 @@ export default function VCardForm() {
   
   const [loading, setLoading] = useState(false)
   const [qrCode, setQrCode] = useState<QRCodeResponse | null>(null)
-  const [editingQRCode, setEditingQRCode] = useState<QRCodeResponse | null>(null)
+  const [showEditor, setShowEditor] = useState(false)
+  const qrListRef = React.useRef<{ refreshList: () => void } | null>(null)
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target
@@ -124,6 +125,8 @@ export default function VCardForm() {
         }
       })
       setQrCode(qrCode)
+      // Refresh QR code list after successful generation
+      qrListRef.current?.refreshList()
       toast.success('QR code generated successfully')
     } catch (error) {
       console.error('Failed to generate QR code:', error)
@@ -187,11 +190,12 @@ export default function VCardForm() {
   }
 
   const handleEdit = (code: QRCodeResponse) => {
-    setEditingQRCode(code)
+    setQrCode(code)
+    setShowEditor(true)
   }
 
   const handleUpdateComplete = () => {
-    setEditingQRCode(null)
+    setShowEditor(false)
   }
 
   // Add the analytics handler function
@@ -201,11 +205,11 @@ export default function VCardForm() {
 
   return (
     <div className="space-y-8">
-      {editingQRCode ? (
+      {showEditor && qrCode ? (
         <QRCodeEditor 
-          qrCode={editingQRCode} 
+          qrCode={qrCode} 
           onUpdate={handleUpdateComplete}
-          onBack={() => setEditingQRCode(null)}
+          onBack={() => setShowEditor(false)}
         />
       ) : (
         <>
@@ -407,6 +411,7 @@ export default function VCardForm() {
           </CardContent>
 
           <QRCodeList 
+            ref={qrListRef}
             onEdit={handleEdit}
             onShare={handleShare}
             showAnalytics={true}

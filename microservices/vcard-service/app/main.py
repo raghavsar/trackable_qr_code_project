@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Depends, status
+from fastapi import FastAPI, HTTPException, Depends, status, Response
 from fastapi.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 from datetime import datetime
@@ -285,4 +285,127 @@ async def delete_vcard(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error deleting VCard: {str(e)}"
+        )
+
+@app.get("/vcards/{vcard_id}/download")
+async def download_vcard(
+    vcard_id: str,
+    db = Depends(get_database)
+):
+    try:
+        logger.info(f"Generating VCF download for VCard: {vcard_id}")
+        
+        # Get VCard data
+        vcard = await db.vcards.find_one({"_id": PyObjectId(vcard_id)})
+        if not vcard:
+            raise HTTPException(status_code=404, detail="VCard not found")
+        
+        # Generate VCF content
+        vcf_lines = [
+            "BEGIN:VCARD",
+            "VERSION:3.0",
+            f"N:{vcard['last_name']};{vcard['first_name']};;;",
+            f"FN:{vcard['first_name']} {vcard['last_name']}"
+        ]
+        
+        # Add optional fields
+        if vcard.get('email'):
+            vcf_lines.append(f"EMAIL:{vcard['email']}")
+        
+        if vcard.get('mobile_number'):
+            vcf_lines.append(f"TEL;TYPE=CELL:{vcard['mobile_number']}")
+        
+        if vcard.get('work_number'):
+            vcf_lines.append(f"TEL;TYPE=WORK:{vcard['work_number']}")
+        
+        if vcard.get('company'):
+            vcf_lines.append(f"ORG:{vcard['company']}")
+        
+        if vcard.get('title'):
+            vcf_lines.append(f"TITLE:{vcard['title']}")
+        
+        if vcard.get('website'):
+            vcf_lines.append(f"URL:{vcard['website']}")
+        
+        if vcard.get('profile_picture'):
+            vcf_lines.append(f"PHOTO;VALUE=URI:{vcard['profile_picture']}")
+        
+        # Add address if available
+        if vcard.get('address'):
+            addr = vcard['address']
+            adr_parts = [
+                "",  # PO Box
+                "",  # Extended Address
+                addr.get('street', ''),
+                addr.get('city', ''),
+                addr.get('state', ''),
+                addr.get('zip_code', ''),
+                addr.get('country', '')
+            ]
+            vcf_lines.append(f"ADR;TYPE=WORK:{';'.join(adr_parts)}")
+        
+        # Add notes if available
+        if vcard.get('notes'):
+            vcf_lines.append(f"NOTE:{vcard['notes']}")
+        
+        vcf_lines.append("END:VCARD")
+        
+        # Join lines with proper line endings
+        vcf_content = "\r\n".join(vcf_lines)
+        
+        # Create response with VCF file
+        return Response(
+            content=vcf_content,
+            media_type="text/vcard",
+            headers={
+                "Content-Disposition": f'attachment; filename="{vcard["first_name"]}_{vcard["last_name"]}.vcf"',
+                "Content-Type": "text/vcard",
+                "Cache-Control": "no-cache"
+            }
+        )
+        
+    except Exception as e:
+        logger.error(f"Error generating VCF: {str(e)}")
+        if isinstance(e, HTTPException):
+            raise e
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error generating VCF: {str(e)}"
+        )
+
+@app.get("/vcards/public/{vcard_id}")
+async def get_public_vcard(
+    vcard_id: str,
+    db = Depends(get_database)
+):
+    try:
+        logger.info(f"Fetching public VCard {vcard_id}")
+        
+        try:
+            object_id = PyObjectId(vcard_id)
+            logger.info(f"Successfully converted VCard ID to ObjectId: {object_id}")
+        except Exception as e:
+            logger.error(f"Invalid VCard ID format: {vcard_id}, error: {str(e)}")
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid VCard ID format"
+            )
+        
+        vcard = await db.vcards.find_one({"_id": object_id})
+        
+        if not vcard:
+            logger.error(f"VCard not found with ID {vcard_id}")
+            raise HTTPException(status_code=404, detail="VCard not found")
+        
+        logger.info(f"Found VCard: {vcard}")
+        vcard["_id"] = str(vcard["_id"])
+        return vcard
+        
+    except Exception as e:
+        logger.error(f"Error fetching VCard: {str(e)}")
+        if isinstance(e, HTTPException):
+            raise e
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to fetch VCard: {str(e)}"
         ) 

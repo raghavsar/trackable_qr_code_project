@@ -152,6 +152,7 @@ services:
       - MINIO_SECRET_KEY=qr_service_password_123
       - MINIO_BUCKET_NAME=qrcodes
       - MINIO_USE_SSL=false
+      - REDIRECT_SERVICE_URL=http://redirect-service:8005
 
   analytics-service:
     build:

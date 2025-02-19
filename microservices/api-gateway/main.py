@@ -444,9 +444,29 @@ async def delete_qr_code(qr_id: str, request: Request, user_id: str = Depends(ve
 async def get_vcard_analytics(vcard_id: str, request: Request, user_id: str = Depends(verify_token)):
     return await forward_request(request, settings.ANALYTICS_SERVICE_URL, f"/api/v1/analytics/vcard/{vcard_id}", user_id)
 
+@app.get("/api/v1/analytics/qr/{qr_id}")
+async def get_qr_analytics(qr_id: str, request: Request, user_id: str = Depends(verify_token)):
+    return await forward_request(request, settings.ANALYTICS_SERVICE_URL, f"/api/v1/analytics/qr/{qr_id}", user_id)
+
 @app.get("/api/v1/analytics/user/{user_id}")
 async def get_user_analytics(user_id: str, request: Request, current_user_id: str = Depends(verify_token)):
     return await forward_request(request, settings.ANALYTICS_SERVICE_URL, f"/api/v1/analytics/user/{user_id}", current_user_id)
+
+@app.post("/api/v1/analytics/scan")
+async def record_scan(request: Request):
+    """Record a scan event."""
+    try:
+        return await forward_request(
+            request,
+            settings.ANALYTICS_SERVICE_URL,
+            "/api/v1/analytics/scan"
+        )
+    except Exception as e:
+        logger.error(f"Error recording scan: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error recording scan: {str(e)}"
+        )
 
 @app.get("/api/v1/health")
 async def health_check():
@@ -495,6 +515,11 @@ async def health_check():
         "timestamp": datetime.utcnow().isoformat(),
         "services": services
     }
+
+@app.get("/api/v1/vcards/public/{vcard_id}")
+async def get_public_vcard(vcard_id: str, request: Request):
+    """Get public VCard data without authentication."""
+    return await forward_request(request, settings.VCARD_SERVICE_URL, f"/vcards/public/{vcard_id}")
 
 if __name__ == "__main__":
     import uvicorn

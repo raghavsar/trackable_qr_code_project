@@ -10,7 +10,7 @@ export function LandingPage() {
 
   useEffect(() => {
     // Generate random points for the QR code animation
-    const points = Array.from({ length: 80 }, (_, i) => ({
+    const points = Array.from({ length: 80 }, (_) => ({
       x: Math.random() * 100,
       y: Math.random() * 100,
       delay: Math.random() * 0.5

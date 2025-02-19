@@ -60,12 +60,12 @@ interface QRCodeListProps {
   className?: string
 }
 
-export default function QRCodeList({ 
+const QRCodeList = React.forwardRef<{ refreshList: () => void }, QRCodeListProps>(({ 
   onEdit, 
   onShare,
   showAnalytics = true,
   className = ''
-}: QRCodeListProps) {
+}, ref) => {
   const navigate = useNavigate()
   const [qrCodes, setQrCodes] = useState<QRCode[]>([])
   const [loading, setLoading] = useState(true)
@@ -80,7 +80,6 @@ export default function QRCodeList({
 
   const fetchQRCodes = async () => {
     try {
-      setLoading(true)
       setError(null)
       const codes = await qrService.listQRCodes()
       setQrCodes(codes)
@@ -90,6 +89,27 @@ export default function QRCodeList({
     } finally {
       setLoading(false)
     }
+  }
+
+  React.useImperativeHandle(ref, () => ({
+    refreshList: fetchQRCodes
+  }))
+
+  const addQRCode = (newQRCode: QRCode) => {
+    setQrCodes(prevCodes => [newQRCode, ...prevCodes])
+    fetchQRCodes()
+  }
+
+  const updateQRCode = (updatedQRCode: QRCode) => {
+    setQrCodes(prevCodes => 
+      prevCodes.map(code => 
+        code.id === updatedQRCode.id ? updatedQRCode : code
+      )
+    )
+  }
+
+  const removeQRCode = (id: string) => {
+    setQrCodes(prevCodes => prevCodes.filter(code => code.id !== id))
   }
 
   const handleDownload = async (qrCode: QRCode, format: 'png' | 'svg' | 'pdf' = 'png') => {
@@ -114,27 +134,32 @@ export default function QRCodeList({
   const handleDelete = async (id: string) => {
     try {
       await qrService.deleteQRCode(id)
+      removeQRCode(id)
       toast.success('QR code deleted successfully')
-      fetchQRCodes()
     } catch (error) {
       console.error('Failed to delete QR code:', error)
       toast.error('Failed to delete QR code')
+      fetchQRCodes()
     }
   }
 
   const handleViewAnalytics = (qrCode: QRCode) => {
-    navigate(`/analytics/${qrCode.id}`)
+    console.log('QR Code data:', qrCode);
+    if (qrCode.id) {
+      navigate(`/analytics/qr/${qrCode.id}`);
+    } else {
+      console.error('Missing QR code ID:', qrCode);
+      toast.error('Analytics not available for this QR code');
+    }
   }
 
   const filteredAndSortedQRCodes = React.useMemo(() => {
     let filtered = [...qrCodes]
     
-    // Apply type filter
     if (filter !== 'all') {
       filtered = filtered.filter(qr => qr.type === filter)
     }
     
-    // Apply search
     if (searchQuery) {
       const searchLower = searchQuery.toLowerCase()
       filtered = filtered.filter(qr => 
@@ -146,7 +171,6 @@ export default function QRCodeList({
       )
     }
     
-    // Apply sorting
     filtered.sort((a, b) => {
       if (sortBy === 'newest') {
         return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
@@ -309,4 +333,6 @@ export default function QRCodeList({
       )}
     </div>
   )
-} 
+})
+
+export default QRCodeList 

@@ -21,7 +21,7 @@ from shared.models import QRCode, QRTemplate, QRDesignOptions, PyObjectId
 from .database import get_database
 from .auth import get_current_user
 from .storage import MinioStorage, storage_service
-from .qr_utils import hex_to_rgb, get_module_drawer, process_logo, generate_vcard_content, generate_vcard_qr
+from .qr_utils import hex_to_rgb, get_module_drawer, process_logo, generate_vcard_content, CustomEyeDrawer
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -79,16 +79,17 @@ def generate_qr_code(
         qr.make(fit=True)
 
         # Convert colors from hex to RGB
-        fg_color = hex_to_rgb(design.foreground_color)
+        fg_color = hex_to_rgb(design.module_color)  # Use module_color for data patterns
         bg_color = hex_to_rgb(design.background_color)
+        eye_color = hex_to_rgb(design.eye_color)
 
         # Create the QR code image with style
         img = qr.make_image(
             image_factory=StyledPilImage,
-            module_drawer=get_module_drawer(design.pattern_style),
+            module_drawer=get_module_drawer(design.pattern_style, fg_color),
             color=fg_color,
             back_color=bg_color,
-            eye_drawer=get_module_drawer(design.eye_style)
+            eye_drawer=CustomEyeDrawer(eye_color)
         )
 
         # Add logo if specified
@@ -182,7 +183,7 @@ async def create_qr_code(request: Request, db = Depends(get_database)):
             "module_color": "#0f50b5",
             "pattern_style": "dots",
             "error_correction": "Q",
-            "logo_url": "/assets/images/phonon-favicon.png",
+            "logo_url": None,  # Make logo optional
             "logo_size": 0.23,
             "logo_background": True,
             "logo_round": True
@@ -210,7 +211,12 @@ async def create_qr_code(request: Request, db = Depends(get_database)):
         # Generate QR code
         logger.info("Generating QR code")
         qr_code_bytes = await generate_vcard_qr(vcard_data, style_config)
-        logger.info(f"QR code generated, size: {len(qr_code_bytes)} bytes")
+        
+        # Get the size of the generated QR code
+        qr_code_bytes.seek(0, 2)  # Seek to end
+        size = qr_code_bytes.tell()  # Get current position (size)
+        qr_code_bytes.seek(0)  # Reset to beginning
+        logger.info(f"QR code generated, size: {size} bytes")
         
         # Generate unique object name with user-centric structure
         timestamp = datetime.utcnow().timestamp()
@@ -219,7 +225,7 @@ async def create_qr_code(request: Request, db = Depends(get_database)):
         
         # Upload to MinIO and get URL
         logger.info("Uploading QR code to MinIO")
-        qr_image_url = await storage.upload_qr_code(BytesIO(qr_code_bytes), object_name)
+        qr_image_url = await storage.upload_qr_code(qr_code_bytes, object_name)
         logger.info(f"QR code uploaded, URL: {qr_image_url}")
         
         # Create database record
@@ -242,7 +248,7 @@ async def create_qr_code(request: Request, db = Depends(get_database)):
         response_data = {
             "id": str(result.inserted_id),
             "tracking_id": str(result.inserted_id),
-            "qr_image": base64.b64encode(qr_code_bytes).decode('utf-8'),
+            "qr_image": base64.b64encode(qr_code_bytes.getvalue()).decode('utf-8'),
             "qr_image_url": qr_image_url,
             "created_at": qr_code_doc["created_at"].isoformat(),
             "type": "vcard",
@@ -906,4 +912,88 @@ async def delete_template(
         raise HTTPException(
             status_code=500,
             detail=f"Failed to delete template: {str(e)}"
+        )
+
+async def generate_vcard_qr(
+    vcard_data: dict,
+    design: Optional[QRDesignOptions] = None
+) -> io.BytesIO:
+    """Generate QR code with custom design options."""
+    try:
+        if design is None:
+            design = QRDesignOptions()
+
+        # Get the frontend URL from environment
+        frontend_url = os.getenv('FRONTEND_URL', 'http://192.168.7.154:5173')
+        
+        # Create the frontend URL for redirection
+        redirect_url = f"{frontend_url}/r/{str(vcard_data.get('_id', ''))}"
+        logger.info(f"Generated frontend redirect URL: {redirect_url}")
+
+        # Create QR code instance
+        qr = qrcode.QRCode(
+            version=1,
+            error_correction=getattr(qrcode.constants, f"ERROR_CORRECT_{design.error_correction}"),
+            box_size=design.box_size,
+            border=design.border,
+        )
+        
+        # Add the redirect URL to QR code
+        qr.add_data(redirect_url)
+        qr.make(fit=True)
+
+        # Convert colors from hex to RGB
+        fg_color = hex_to_rgb(design.module_color)  # Use module_color for data patterns
+        bg_color = hex_to_rgb(design.background_color)
+        eye_color = hex_to_rgb(design.eye_color)
+
+        # Create the QR code image with style
+        img = qr.make_image(
+            image_factory=StyledPilImage,
+            module_drawer=get_module_drawer(design.pattern_style, fg_color),
+            color=fg_color,
+            back_color=bg_color,
+            eye_drawer=CustomEyeDrawer(eye_color)
+        )
+
+        # Add logo if specified
+        if design.logo_url:
+            try:
+                # Process logo with background and rounding options
+                logo = process_logo(
+                    design.logo_url,
+                    design.logo_background or False,
+                    design.logo_round or False
+                )
+                
+                # Calculate logo size
+                qr_width, qr_height = img.size
+                logo_size = int(min(qr_width, qr_height) * design.logo_size)
+                logo = logo.resize((logo_size, logo_size), Image.Resampling.LANCZOS)
+                
+                # Calculate position to center the logo
+                box = (
+                    (qr_width - logo_size) // 2,
+                    (qr_height - logo_size) // 2,
+                    (qr_width + logo_size) // 2,
+                    (qr_height + logo_size) // 2
+                )
+                
+                # Paste logo onto QR code
+                img.paste(logo, box, logo if logo.mode == 'RGBA' else None)
+            except Exception as e:
+                logger.error(f"Failed to add logo to QR code: {str(e)}")
+                # Continue without logo if there's an error
+
+        # Convert to bytes
+        img_byte_arr = io.BytesIO()
+        img.save(img_byte_arr, format='PNG')
+        img_byte_arr.seek(0)
+        
+        return img_byte_arr
+    except Exception as e:
+        logger.error(f"Error generating QR code: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to generate QR code: {str(e)}"
         ) 

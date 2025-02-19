@@ -69,7 +69,7 @@ export class QRService {
     return response.data
   }
 
-  async getVCard(vcardId: string): Promise<VCardData> {
+  async getVCard(vcardId: string): Promise<VCardResponse> {
     try {
       console.log('Getting VCard with ID:', vcardId)
       
@@ -85,7 +85,7 @@ export class QRService {
       }
 
       console.log('Making request to get VCard:', vcardId)
-      const response = await axiosInstance.get(`/vcards/${vcardId}`)
+      const response = await axiosInstance.get(`/vcards/public/${vcardId}`)
       const vcard = response.data
       
       console.log('Received VCard data:', vcard)
@@ -95,32 +95,27 @@ export class QRService {
         throw new Error('Invalid VCard data received from server')
       }
 
-      // Ensure we have all required fields
-      if (!vcard.first_name || !vcard.last_name || !vcard.email) {
-        console.error('Missing required fields in VCard data:', vcard)
-        throw new Error('Invalid VCard data: missing required fields')
-      }
-
+      // Convert to VCardResponse format
       return {
-        ...vcard,
-        vcard_id: vcard._id // Ensure we set the vcard_id from MongoDB's _id
+        id: vcard._id,
+        _id: vcard._id,
+        first_name: vcard.first_name,
+        last_name: vcard.last_name,
+        email: vcard.email,
+        mobile_number: vcard.mobile_number,
+        work_number: vcard.work_number,
+        profile_picture: vcard.profile_picture,
+        company: vcard.company,
+        title: vcard.title,
+        website: vcard.website,
+        address: vcard.address,
+        notes: vcard.notes,
+        created_at: vcard.created_at,
+        updated_at: vcard.updated_at
       }
-    } catch (error: any) {
+    } catch (error) {
       console.error('Error fetching VCard:', error)
-      if (error.response) {
-        // The request was made and the server responded with a status code
-        // that falls out of the range of 2xx
-        console.error('Server response error:', error.response.status, error.response.data)
-        throw error
-      } else if (error.request) {
-        // The request was made but no response was received
-        console.error('No response received from server')
-        throw new Error('No response received from server')
-      } else {
-        // Something happened in setting up the request that triggered an Error
-        console.error('Request setup error:', error.message)
-        throw error
-      }
+      throw error
     }
   }
 
@@ -149,13 +144,20 @@ export const qrService = new QRService(axiosInstance)
 
 export class AnalyticsService {
   async getAnalytics(timeRange: string): Promise<AnalyticsData> {
-    const response = await axiosInstance.get(`/analytics/dashboard?timeRange=${timeRange}`)
-    return response.data.data
+    const response = await axiosInstance.get(`/api/v1/analytics/dashboard?timeRange=${timeRange}`)
+    return response.data
   }
 
-  async getQRCodeAnalytics(qrCodeId: string, timeRange: string): Promise<AnalyticsData> {
-    const response = await axiosInstance.get(`/analytics/qr/${qrCodeId}?timeRange=${timeRange}`)
-    return response.data.data
+  async getQRCodeAnalytics(qrCodeId: string, timeRange: string = '7d'): Promise<AnalyticsData> {
+    try {
+      console.log('Fetching analytics for QR code:', qrCodeId);
+      const response = await axiosInstance.get(`/api/v1/analytics/qr/${qrCodeId}?timeRange=${timeRange}`);
+      console.log('Analytics response:', response.data);
+      return response.data;
+    } catch (error) {
+      console.error('Error fetching QR code analytics:', error);
+      throw error;
+    }
   }
 }
 

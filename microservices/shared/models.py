@@ -170,13 +170,14 @@ class QRDesignOptions(BaseModel):
     eye_color: str = Field("#ff4d26", description="Color for eye patterns in hex format (#RRGGBB)")
     module_color: str = Field("#0f50b5", description="Color for data modules in hex format (#RRGGBB)")
     pattern_style: str = Field("dots", description="Pattern style for QR code")
+    eye_style: str = Field("dots", description="Pattern style for eye patterns")
     error_correction: str = Field("Q", description="Error correction level (L, M, Q, H)")
-    logo_url: Optional[str] = None
+    logo_url: Optional[str] = None  # Make logo optional by default
     logo_size: Optional[float] = Field(0.23, gt=0, lt=1, description="Logo size as a fraction of QR code size (0-1)")
     logo_background: Optional[bool] = True
     logo_round: Optional[bool] = True
 
-    @validator('pattern_style')
+    @validator('pattern_style', 'eye_style')
     def validate_pattern_style(cls, v):
         valid_patterns = ['square', 'rounded', 'dots', 'gapped', 'vertical', 'horizontal']
         if v.lower() not in valid_patterns:
