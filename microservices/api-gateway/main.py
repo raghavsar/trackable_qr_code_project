@@ -143,6 +143,20 @@ async def forward_request(request: Request, service_url: str, endpoint: str, use
                 content_type = response.headers.get("content-type", "").lower()
                 logger.info(f"Response content type: {content_type}")
                 
+                # Handle VCard responses
+                if "text/vcard" in content_type:
+                    logger.info("Detected VCard response, forwarding with proper headers")
+                    return Response(
+                        content=response.content,
+                        media_type="text/vcard",
+                        status_code=response.status_code,
+                        headers={
+                            "Content-Type": "text/vcard",
+                            "Content-Disposition": response.headers.get("content-disposition"),
+                            "Cache-Control": "no-cache"
+                        }
+                    )
+                
                 # Handle binary responses (like QR codes)
                 if "image/" in content_type or (response.content and response.content.startswith(b'\x89PNG')):
                     logger.info("Detected binary response, returning raw content")
@@ -391,6 +405,41 @@ async def update_vcard(vcard_id: str, request: Request, user_id: str = Depends(v
 @app.delete("/api/v1/vcards/{vcard_id}")
 async def delete_vcard(vcard_id: str, request: Request, user_id: str = Depends(verify_token)):
     return await forward_request(request, settings.VCARD_SERVICE_URL, f"/vcards/{vcard_id}", user_id)
+
+@app.get("/api/v1/vcards/{vcard_id}/download")
+async def download_vcard(
+    request: Request,
+    vcard_id: str
+):
+    """Forward VCard download request to VCard service."""
+    try:
+        # Add Accept header for VCard
+        headers = dict(request.headers)
+        headers["Accept"] = "text/vcard"
+        
+        # Create new request with updated headers
+        modified_request = Request(
+            scope=request.scope,
+            receive=request.receive,
+        )
+        modified_request._headers = headers
+        
+        # Forward request to VCard service
+        response = await forward_request(
+            modified_request,
+            settings.VCARD_SERVICE_URL,
+            f"/vcards/{vcard_id}/download"
+        )
+        
+        # Return response directly since forward_request now handles VCard responses
+        return response
+        
+    except Exception as e:
+        logger.error(f"Error downloading VCard: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error downloading VCard: {str(e)}"
+        )
 
 # QR Code routes
 @app.post("/api/v1/qrcodes")

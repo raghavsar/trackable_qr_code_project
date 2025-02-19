@@ -37,7 +37,7 @@ export default function VCardRedirect() {
               os: navigator.platform,
               browser: navigator.userAgent
             },
-            action_type: 'view',
+            action_type: 'contact_add',
             success: true,
             ip_address: null,
             headers: {
@@ -89,18 +89,30 @@ export default function VCardRedirect() {
       });
       
       // Download VCF
-      const response = await fetch(`${apiUrl}/vcards/${vcard._id}/download`, {
+      const response = await fetch(`${apiUrl}/api/v1/vcards/${vcard._id}/download`, {
         headers: {
           'Accept': 'text/vcard'
         }
       });
-      const blob = await response.blob();
+      
+      if (!response.ok) {
+        throw new Error('Failed to download contact');
+      }
+      
+      // Get filename from Content-Disposition header or create a default one
+      const contentDisposition = response.headers.get('content-disposition');
+      const filename = contentDisposition
+        ? contentDisposition.split('filename=')[1]?.replace(/"/g, '')
+        : `${vcard.first_name}_${vcard.last_name}.vcf`;
+      
+      // Create blob with proper MIME type
+      const blob = new Blob([await response.text()], { type: 'text/vcard' });
       
       // Create download link
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `${vcard.first_name}_${vcard.last_name}.vcf`;
+      a.download = filename;
       document.body.appendChild(a);
       a.click();
       
@@ -202,17 +214,16 @@ export default function VCardRedirect() {
             )}
 
             {vcard.address && (
-              <div className="flex items-center space-x-3">
-                <MapPin className="w-5 h-5 text-gray-500" />
-                <address className="not-italic">
-                  {[
-                    vcard.address.street,
-                    vcard.address.city,
-                    vcard.address.state,
-                    vcard.address.zip_code,
-                    vcard.address.country
-                  ].filter(Boolean).join(', ')}
-                </address>
+              <div className="flex items-start space-x-3">
+                <MapPin className="w-6 h-6 text-gray-500 mt-0.5 flex-shrink-0" />
+                <a 
+                  href="https://maps.app.goo.gl/R1Gg4zBBcyPJQCE48" 
+                  target="_blank" 
+                  rel="noopener noreferrer" 
+                  className="text-blue-600 hover:underline leading-relaxed"
+                >
+                  106, Blue Diamond Complex, next to Indian Oil Petrol Pump, Fatehgunj, Vadodara, Gujarat 390002
+                </a>
               </div>
             )}
           </div>

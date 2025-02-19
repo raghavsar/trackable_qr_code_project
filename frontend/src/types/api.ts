@@ -80,6 +80,7 @@ export interface ShortLinkData {
 export interface VCardResponse {
   id: string;
   _id?: string;  // MongoDB ID
+  user_id: string;  // User ID who owns this VCard
   first_name: string;
   last_name: string;
   email: string;

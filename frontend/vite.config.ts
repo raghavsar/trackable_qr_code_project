@@ -26,10 +26,10 @@ export default defineConfig(({ mode }) => {
           secure: false
         },
         '/analytics': {
-          target: 'http://192.168.7.154:8004',
+          target: env.VITE_API_URL || 'http://localhost:8000',
           changeOrigin: true,
           secure: false,
-          rewrite: (path) => path.replace(/^\/analytics/, '')
+          rewrite: (path) => `/api/v1${path}`
         }
       },
       cors: true,

@@ -300,65 +300,80 @@ async def download_vcard(
         if not vcard:
             raise HTTPException(status_code=404, detail="VCard not found")
         
-        # Generate VCF content
+        logger.info(f"Retrieved VCard data: {vcard}")
+        
+        # Ensure all values are strings and handle None values
+        first_name = str(vcard.get('first_name', '')) if vcard.get('first_name') else ''
+        last_name = str(vcard.get('last_name', '')) if vcard.get('last_name') else ''
+        
+        # Generate VCF content with safe string handling
         vcf_lines = [
             "BEGIN:VCARD",
             "VERSION:3.0",
-            f"N:{vcard['last_name']};{vcard['first_name']};;;",
-            f"FN:{vcard['first_name']} {vcard['last_name']}"
+            f"N:{last_name};{first_name};;;",
+            f"FN:{first_name} {last_name}"
         ]
         
-        # Add optional fields
+        # Add optional fields with safe handling
         if vcard.get('email'):
-            vcf_lines.append(f"EMAIL:{vcard['email']}")
+            vcf_lines.append(f"EMAIL;TYPE=INTERNET:{str(vcard['email'])}")
         
         if vcard.get('mobile_number'):
-            vcf_lines.append(f"TEL;TYPE=CELL:{vcard['mobile_number']}")
+            vcf_lines.append(f"TEL;TYPE=CELL:{str(vcard['mobile_number'])}")
         
         if vcard.get('work_number'):
-            vcf_lines.append(f"TEL;TYPE=WORK:{vcard['work_number']}")
+            vcf_lines.append(f"TEL;TYPE=WORK:{str(vcard['work_number'])}")
         
         if vcard.get('company'):
-            vcf_lines.append(f"ORG:{vcard['company']}")
+            vcf_lines.append(f"ORG:{str(vcard['company'])}")
         
         if vcard.get('title'):
-            vcf_lines.append(f"TITLE:{vcard['title']}")
+            vcf_lines.append(f"TITLE:{str(vcard['title'])}")
         
         if vcard.get('website'):
-            vcf_lines.append(f"URL:{vcard['website']}")
+            vcf_lines.append(f"URL:{str(vcard['website'])}")
         
         if vcard.get('profile_picture'):
-            vcf_lines.append(f"PHOTO;VALUE=URI:{vcard['profile_picture']}")
+            vcf_lines.append(f"PHOTO;VALUE=URI:{str(vcard['profile_picture'])}")
         
-        # Add address if available
+        # Add address if available with safe handling
         if vcard.get('address'):
             addr = vcard['address']
             adr_parts = [
                 "",  # PO Box
                 "",  # Extended Address
-                addr.get('street', ''),
-                addr.get('city', ''),
-                addr.get('state', ''),
-                addr.get('zip_code', ''),
-                addr.get('country', '')
+                "106, Blue Diamond Complex",  # Street
+                "Fatehgunj",  # City
+                "Vadodara",  # State
+                "390002",  # ZIP
+                "Gujarat, India"  # Country
             ]
             vcf_lines.append(f"ADR;TYPE=WORK:{';'.join(adr_parts)}")
+            # Add Google Maps URL
+            vcf_lines.append("URL;TYPE=WORK:https://maps.app.goo.gl/R1Gg4zBBcyPJQCE48")
+            # Add formatted address label
+            vcf_lines.append("LABEL;TYPE=WORK:106, Blue Diamond Complex, next to Indian Oil Petrol Pump, Fatehgunj, Vadodara, Gujarat 390002")
         
         # Add notes if available
         if vcard.get('notes'):
-            vcf_lines.append(f"NOTE:{vcard['notes']}")
+            vcf_lines.append(f"NOTE:{str(vcard['notes'])}")
         
-        vcf_lines.append("END:VCARD")
+        vcf_lines.extend([
+            f"REV:{datetime.utcnow().strftime('%Y%m%dT%H%M%SZ')}",
+            "END:VCARD"
+        ])
         
         # Join lines with proper line endings
         vcf_content = "\r\n".join(vcf_lines)
+        logger.info(f"Generated VCF content: {vcf_content}")
         
         # Create response with VCF file
+        filename = f"{first_name}_{last_name}.vcf".replace(' ', '_')
         return Response(
-            content=vcf_content,
+            content=vcf_content.encode('utf-8'),
             media_type="text/vcard",
             headers={
-                "Content-Disposition": f'attachment; filename="{vcard["first_name"]}_{vcard["last_name"]}.vcf"',
+                "Content-Disposition": f'attachment; filename="{filename}"',
                 "Content-Type": "text/vcard",
                 "Cache-Control": "no-cache"
             }

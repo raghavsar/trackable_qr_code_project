@@ -144,14 +144,14 @@ export const qrService = new QRService(axiosInstance)
 
 export class AnalyticsService {
   async getAnalytics(timeRange: string): Promise<AnalyticsData> {
-    const response = await axiosInstance.get(`/api/v1/analytics/dashboard?timeRange=${timeRange}`)
+    const response = await axiosInstance.get(`/analytics/dashboard?timeRange=${timeRange}`)
     return response.data
   }
 
   async getQRCodeAnalytics(qrCodeId: string, timeRange: string = '7d'): Promise<AnalyticsData> {
     try {
       console.log('Fetching analytics for QR code:', qrCodeId);
-      const response = await axiosInstance.get(`/api/v1/analytics/qr/${qrCodeId}?timeRange=${timeRange}`);
+      const response = await axiosInstance.get(`/analytics/qr/${qrCodeId}?timeRange=${timeRange}`);
       console.log('Analytics response:', response.data);
       return response.data;
     } catch (error) {
