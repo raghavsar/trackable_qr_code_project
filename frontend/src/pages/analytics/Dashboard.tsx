@@ -17,7 +17,7 @@ export default function AnalyticsDashboard() {
   const endDate = format(new Date(), 'yyyy-MM-dd');
   const startDate = format(subDays(new Date(), parseInt(timeRange)), 'yyyy-MM-dd');
   
-  const { metrics: realtimeMetrics, error: realtimeError } = useAnalyticsSSE();
+  const { metrics: realtimeMetrics, error: realtimeError, isConnected } = useAnalyticsSSE();
   const { 
     metrics: historicalMetrics, 
     loading: historyLoading, 
@@ -77,6 +77,50 @@ export default function AnalyticsDashboard() {
     </div>
   );
 
+  // Show connection status
+  const renderConnectionStatus = () => (
+    <div className={`px-4 py-2 rounded-lg flex items-center gap-2 ${
+      isConnected ? 'bg-green-50 text-green-700' : 'bg-yellow-50 text-yellow-700'
+    }`}>
+      <div className={`w-2 h-2 rounded-full ${
+        isConnected ? 'bg-green-500' : 'bg-yellow-500'
+      }`} />
+      <span>{isConnected ? 'Connected' : 'Connecting...'}</span>
+    </div>
+  );
+
+  if (realtimeError || historyError) {
+    return (
+      <div className="p-8">
+        <Button onClick={handleBack} variant="ghost" className="mb-4">
+          <ArrowLeft className="mr-2 h-4 w-4" />
+          Back
+        </Button>
+        <div className="space-y-4">
+          {renderError(realtimeError?.message || historyError?.message || 'An error occurred')}
+          <Button onClick={handleRefresh}>
+            <RefreshCw className="mr-2 h-4 w-4" />
+            Retry
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  if (historyLoading) {
+    return (
+      <div className="p-8">
+        <Button onClick={handleBack} variant="ghost" className="mb-4">
+          <ArrowLeft className="mr-2 h-4 w-4" />
+          Back
+        </Button>
+        <div className="flex items-center justify-center p-8">
+          <Loader2 className="h-8 w-8 animate-spin" />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="container mx-auto p-4 space-y-6">
       <div className="flex justify-between items-center">
@@ -111,13 +155,6 @@ export default function AnalyticsDashboard() {
           </Button>
         </div>
       </div>
-
-      {(realtimeError || historyError) && (
-        <div className="space-y-2">
-          {realtimeError && renderError(`Real-time analytics error: ${realtimeError.message}`)}
-          {historyError && renderError(`Historical data error: ${historyError.message}`)}
-        </div>
-      )}
 
       <div className="flex justify-between items-center">
         <div className="grid grid-cols-3 gap-4">

@@ -12,6 +12,7 @@ export default function VCardRedirect() {
   const { id } = useParams();
   const [vcard, setVcard] = useState<VCardResponse | null>(null);
   const [loading, setLoading] = useState(true);
+  const [isAdding, setIsAdding] = useState(false);
 
   useEffect(() => {
     const fetchVCard = async () => {
@@ -20,7 +21,7 @@ export default function VCardRedirect() {
         const data = await qrService.getVCard(id);
         setVcard(data);
         
-        // Track page view
+        // Track page view without incrementing scan count
         const apiUrl = import.meta.env.VITE_API_URL;
         await fetch(`${apiUrl}/api/v1/analytics/scan`, {
           method: 'POST',
@@ -37,7 +38,7 @@ export default function VCardRedirect() {
               os: navigator.platform,
               browser: navigator.userAgent
             },
-            action_type: 'contact_add',
+            action_type: 'page_view',
             success: true,
             ip_address: null,
             headers: {
@@ -125,6 +126,24 @@ export default function VCardRedirect() {
       console.error('Failed to download VCF:', error);
       toast.error('Failed to download contact');
     }
+  };
+
+  const handleAddContact = async () => {
+    if (isAdding) return; // Prevent multiple clicks
+    setIsAdding(true);
+    const apiUrl = import.meta.env.VITE_API_URL;
+    const response = await fetch(`${apiUrl}/api/v1/analytics/contact/add?vcard_id=${id}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+    if (response.ok) {
+      toast.success('Contact added successfully!');
+    } else {
+      toast.error('Failed to add contact.');
+    }
+    setIsAdding(false); // Reset the state after the request
   };
 
   if (loading) {
@@ -243,6 +262,16 @@ export default function VCardRedirect() {
             >
               <Download className="w-4 h-4 mr-2" />
               Add to Contacts
+            </Button>
+          </div>
+
+          <div className="flex justify-center pt-4">
+            <Button
+              onClick={handleAddContact}
+              className="bg-primary hover:bg-primary/90"
+              disabled={isAdding}
+            >
+              Add Contact
             </Button>
           </div>
         </CardContent>

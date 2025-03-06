@@ -1,7 +1,7 @@
 from fastapi import FastAPI, HTTPException, Depends, Request, status, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from fastapi.responses import RedirectResponse
+from fastapi.responses import RedirectResponse, StreamingResponse
 import httpx
 import jwt
 from jwt.exceptions import ExpiredSignatureError, InvalidTokenError
@@ -515,6 +515,106 @@ async def record_scan(request: Request):
         raise HTTPException(
             status_code=500,
             detail=f"Error recording scan: {str(e)}"
+        )
+
+@app.get("/api/v1/analytics/stream")
+async def analytics_stream(request: Request):
+    """Stream real-time analytics metrics."""
+    try:
+        # Forward the SSE request to analytics service
+        analytics_url = f"{settings.ANALYTICS_SERVICE_URL}/api/v1/analytics/stream"
+        
+        # Create client session with proper headers
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                analytics_url,
+                headers={
+                    'Accept': 'text/event-stream',
+                    'Cache-Control': 'no-cache',
+                    'Connection': 'keep-alive'
+                },
+                timeout=None  # No timeout for SSE
+            )
+            
+            return StreamingResponse(
+                response.aiter_bytes(),
+                media_type="text/event-stream",
+                headers={
+                    'Cache-Control': 'no-cache',
+                    'Connection': 'keep-alive',
+                    'Content-Type': 'text/event-stream',
+                    'X-Accel-Buffering': 'no',
+                    'Access-Control-Allow-Origin': '*'
+                }
+            )
+    except Exception as e:
+        logger.error(f"Error streaming analytics: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error streaming analytics: {str(e)}"
+        )
+
+@app.get("/api/v1/analytics/qr/{qr_id}/stream")
+async def qr_analytics_stream(
+    qr_id: str,
+    request: Request,
+    access_token: str
+):
+    """Stream real-time analytics metrics for a specific QR code."""
+    try:
+        # Verify the token
+        try:
+            payload = jwt.decode(
+                access_token,
+                settings.JWT_SECRET,
+                algorithms=[settings.JWT_ALGORITHM]
+            )
+            user_id = payload.get("sub")
+            if not user_id:
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Invalid authentication token"
+                )
+        except jwt.JWTError:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid authentication token"
+            )
+
+        # Forward the SSE request to analytics service
+        analytics_url = f"{settings.ANALYTICS_SERVICE_URL}/api/v1/analytics/qr/{qr_id}/stream"
+        
+        # Create client session with proper headers
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                analytics_url,
+                headers={
+                    'Accept': 'text/event-stream',
+                    'Cache-Control': 'no-cache',
+                    'Connection': 'keep-alive',
+                    'Authorization': f'Bearer {access_token}'
+                },
+                timeout=None  # No timeout for SSE
+            )
+            
+            return StreamingResponse(
+                response.aiter_bytes(),
+                media_type="text/event-stream",
+                headers={
+                    'Cache-Control': 'no-cache',
+                    'Connection': 'keep-alive',
+                    'Content-Type': 'text/event-stream',
+                    'X-Accel-Buffering': 'no',
+                    'Access-Control-Allow-Origin': '*'
+                }
+            )
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        logger.error(f"Error streaming QR analytics: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error streaming QR analytics: {str(e)}"
         )
 
 @app.get("/api/v1/health")

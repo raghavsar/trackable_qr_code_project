@@ -8,10 +8,15 @@ import asyncio
 from typing import Dict, List, Optional, Any, AsyncGenerator, Set, TYPE_CHECKING
 import logging
 import os
+import uuid
+import jwt
+from jwt.exceptions import InvalidTokenError, ExpiredSignatureError, DecodeError
+from fastapi import status
 
 from shared.models import PyObjectId, ScanTrackingEvent
 from app.database import get_database
 from app.redis_store import get_redis_client
+from app.config import settings
 
 if TYPE_CHECKING:
     from motor.motor_asyncio import AsyncIOMotorDatabase
@@ -24,7 +29,7 @@ app = FastAPI(title="Analytics Service")
 # CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["http://localhost:5173", "http://192.168.7.154:5173"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -76,81 +81,90 @@ async def shutdown_db_client() -> None:
 
 async def get_real_time_metrics(db: Any) -> Dict[str, Any]:
     """Get current analytics metrics"""
-    now = datetime.utcnow()
-    today = now.replace(hour=0, minute=0, second=0, microsecond=0)
-    
-    # Get today's metrics
-    pipeline = [
-        {
-            "$match": {
-                "timestamp": {"$gte": today}
-            }
-        },
-        {
-            "$group": {
-                "_id": None,
-                "total_scans": {"$sum": 1},
-                "contact_adds": {
-                    "$sum": {"$cond": [{"$eq": ["$action_type", "contact_add"]}, 1, 0]}
-                },
-                "vcf_downloads": {
-                    "$sum": {"$cond": [{"$eq": ["$action_type", "vcf_download"]}, 1, 0]}
-                },
-                "mobile_scans": {
-                    "$sum": {"$cond": [{"$eq": ["$device_info.is_mobile", True]}, 1, 0]}
-                },
-                "desktop_scans": {
-                    "$sum": {"$cond": [{"$eq": ["$device_info.is_mobile", False]}, 1, 0]}
-                },
-                "recent_scans": {
-                    "$push": {
-                        "vcard_id": "$vcard_id",
-                        "timestamp": "$timestamp",
-                        "device_info": "$device_info",
-                        "action_type": "$action_type"
+    try:
+        # Get metrics for the last 24 hours
+        end_time = datetime.utcnow()
+        start_time = end_time - timedelta(hours=24)
+        
+        pipeline = [
+            {
+                "$match": {
+                    "timestamp": {"$gte": start_time, "$lte": end_time},
+                    "action_type": {"$ne": "page_view"}  # Exclude page_view events
+                }
+            },
+            {
+                "$group": {
+                    "_id": None,
+                    "total_scans": {"$sum": {"$cond": [{"$eq": ["$action_type", "scan"]}, 1, 0]}},  # Only count 'scan' events
+                    "contact_adds": {
+                        "$sum": {"$cond": [{"$eq": ["$action_type", "contact_add"]}, 1, 0]}
+                    },
+                    "vcf_downloads": {
+                        "$sum": {"$cond": [{"$eq": ["$action_type", "vcf_download"]}, 1, 0]}
                     }
                 }
             }
+        ]
+        
+        result = await db.scan_events.aggregate(pipeline).to_list(1)
+        metrics = result[0] if result else {
+            "total_scans": 0,
+            "contact_adds": 0,
+            "vcf_downloads": 0
         }
-    ]
-    
-    result = await db.scan_events.aggregate(pipeline).to_list(1)
-    metrics = result[0] if result else {
-        "total_scans": 0,
-        "contact_adds": 0,
-        "vcf_downloads": 0,
-        "mobile_scans": 0,
-        "desktop_scans": 0,
-        "recent_scans": []
-    }
-    
-    # Sort and limit recent scans
-    metrics["recent_scans"] = sorted(
-        metrics["recent_scans"],
-        key=lambda x: x["timestamp"],
-        reverse=True
-    )[:10]
-    
-    return metrics
+        
+        # Get recent scans (including page_view for visibility)
+        recent_scans = await db.scan_events.find(
+            sort=[("timestamp", -1)],
+            limit=5
+        ).to_list(5)
+        
+        metrics["recent_scans"] = [
+            {
+                "timestamp": scan["timestamp"].isoformat(),
+                "action_type": scan["action_type"],
+                "device_info": scan["device_info"]
+            }
+            for scan in recent_scans
+        ]
+        
+        # Remove MongoDB _id
+        if "_id" in metrics:
+            del metrics["_id"]
+            
+        return metrics
+        
+    except Exception as e:
+        logger.error(f"Error getting real-time metrics: {e}")
+        return {
+            "total_scans": 0,
+            "contact_adds": 0,
+            "vcf_downloads": 0,
+            "recent_scans": []
+        }
 
-async def event_generator(request: Request, db: Any) -> AsyncGenerator[str, None]:
-    """Generate SSE events"""
-    client_queue = await sse_manager.register(request)
+async def event_generator(request: Request, db: Any):
+    """Generate SSE events with real-time metrics."""
+    client_id = str(uuid.uuid4())
+    logger.info(f"New client connected: {client_id}")
+    
     try:
         while True:
-            if await request.is_disconnected():
-                break
-
-            # Wait for new data
-            metrics = await client_queue.get()
+            # Get current metrics
+            metrics = await get_real_time_metrics(db)
             
-            # Format as SSE
-            yield f"data: {json.dumps(metrics)}\n\n"
+            # Format as SSE event
+            event_data = json.dumps(metrics)
+            yield f"data: {event_data}\n\n"
             
-            # Optional: Add heartbeat
-            await asyncio.sleep(1)
+            # Wait before sending next update
+            await asyncio.sleep(2)  # Send updates every 2 seconds
+            
+    except Exception as e:
+        logger.error(f"Error in event generator for client {client_id}: {e}")
     finally:
-        sse_manager.remove(client_queue)
+        logger.info(f"Client disconnected: {client_id}")
 
 @app.post("/api/v1/analytics/scan")
 async def record_scan(
@@ -227,10 +241,11 @@ async def track_scan(
             user_agent=request.headers.get("user-agent"),
             ip_address=request.client.host,
             headers=dict(request.headers),
+            action_type="scan",  # Explicitly set action_type to "scan"
             device_info={
                 "browser": request.headers.get("sec-ch-ua"),
-                "platform": request.headers.get("sec-ch-ua-platform"),
-                "mobile": request.headers.get("sec-ch-ua-mobile")
+                "os": request.headers.get("sec-ch-ua-platform"),
+                "is_mobile": request.headers.get("sec-ch-ua-mobile") == "?1"
             }
         )
         
@@ -280,7 +295,7 @@ async def get_qr_analytics(
 ):
     """Get analytics for a specific QR code."""
     try:
-        logger.info(f"Fetching analytics for QR code: {qr_id}")
+        logger.info(f"Fetching analytics for vCard: {qr_id}")
         
         # Parse time range
         time_delta = {
@@ -292,12 +307,13 @@ async def get_qr_analytics(
         
         start_time = datetime.utcnow() - time_delta
         
-        # Get scan events for this QR code
+        # Get scan events for this vCard
         pipeline = [
             {
                 "$match": {
-                    "qr_id": qr_id,
-                    "timestamp": {"$gte": start_time}
+                    "vcard_id": qr_id,
+                    "timestamp": {"$gte": start_time},
+                    "action_type": {"$ne": "page_view"}  # Exclude page_view events
                 }
             },
             {
@@ -320,7 +336,7 @@ async def get_qr_analytics(
         analytics_data = {
             "qr_id": qr_id,
             "timeRange": timeRange,
-            "total_scans": sum(event["count"] for event in scan_events),
+            "total_scans": sum(event["count"] for event in scan_events if event["_id"]["action"] == "scan"),  # Only count 'scan' events
             "scan_history": [
                 {
                     "date": event["_id"]["date"],
@@ -331,12 +347,130 @@ async def get_qr_analytics(
             ]
         }
         
-        logger.info(f"Successfully retrieved analytics for QR code {qr_id}")
+        logger.info(f"Successfully retrieved analytics for vCard {qr_id}")
         return analytics_data
         
     except Exception as e:
-        logger.error(f"Error fetching QR code analytics: {str(e)}")
+        logger.error(f"Error fetching vCard analytics: {str(e)}")
         raise HTTPException(
             status_code=500,
             detail=f"Error fetching analytics: {str(e)}"
+        )
+
+async def get_qr_real_time_metrics(db: Any, qr_id: str) -> Dict[str, Any]:
+    """Get current analytics metrics for a specific QR code"""
+    try:
+        # Get metrics for the last 24 hours
+        end_time = datetime.utcnow()
+        start_time = end_time - timedelta(hours=24)
+        
+        pipeline = [
+            {
+                "$match": {
+                    "vcard_id": qr_id,
+                    "timestamp": {"$gte": start_time, "$lte": end_time},
+                    "action_type": {"$ne": "page_view"}  # Exclude page_view events
+                }
+            },
+            {
+                "$group": {
+                    "_id": None,
+                    "total_scans": {"$sum": {"$cond": [{"$eq": ["$action_type", "scan"]}, 1, 0]}},  # Only count 'scan' events
+                    "contact_adds": {
+                        "$sum": {"$cond": [{"$eq": ["$action_type", "contact_add"]}, 1, 0]}
+                    },
+                    "vcf_downloads": {
+                        "$sum": {"$cond": [{"$eq": ["$action_type", "vcf_download"]}, 1, 0]}
+                    }
+                }
+            }
+        ]
+        
+        result = await db.scan_events.aggregate(pipeline).to_list(1)
+        metrics = result[0] if result else {
+            "total_scans": 0,
+            "contact_adds": 0,
+            "vcf_downloads": 0
+        }
+        
+        # Get recent scans for this vCard (including page_view for visibility)
+        recent_scans = await db.scan_events.find(
+            {"vcard_id": qr_id},
+            sort=[("timestamp", -1)],
+            limit=5
+        ).to_list(5)
+        
+        metrics["recent_scans"] = [
+            {
+                "timestamp": scan["timestamp"].isoformat(),
+                "action_type": scan["action_type"],
+                "device_info": scan["device_info"]
+            }
+            for scan in recent_scans
+        ]
+        
+        # Remove MongoDB _id
+        if "_id" in metrics:
+            del metrics["_id"]
+            
+        return metrics
+        
+    except Exception as e:
+        logger.error(f"Error getting QR real-time metrics: {e}")
+        return {
+            "total_scans": 0,
+            "contact_adds": 0,
+            "vcf_downloads": 0,
+            "recent_scans": []
+        }
+
+@app.get("/api/v1/analytics/qr/{qr_id}/stream")
+async def stream_qr_metrics(
+    qr_id: str,
+    request: Request,
+    db: Any = Depends(get_database)
+) -> StreamingResponse:
+    """SSE endpoint for real-time metrics of a specific QR code"""
+    try:
+        async def event_generator():
+            client_id = str(uuid.uuid4())
+            logger.info(f"Starting event stream for client {client_id}, QR {qr_id}")
+            try:
+                while True:
+                    try:
+                        # Get current metrics for this QR code
+                        metrics = await get_qr_real_time_metrics(db, qr_id)
+                        
+                        # Format as SSE event
+                        event_data = json.dumps(metrics)
+                        yield f"data: {event_data}\n\n"
+                        
+                        # Wait before sending next update
+                        await asyncio.sleep(2)  # Send updates every 2 seconds
+                        
+                    except Exception as e:
+                        logger.error(f"Error in QR metrics generator for client {client_id}: {e}")
+                        # Don't break the loop on error, just log and continue
+                        continue
+            finally:
+                logger.info(f"Client {client_id} disconnected from QR {qr_id} stream")
+
+        return StreamingResponse(
+            event_generator(),
+            media_type="text/event-stream",
+            headers={
+                'Cache-Control': 'no-cache',
+                'Connection': 'keep-alive',
+                'Content-Type': 'text/event-stream',
+                'X-Accel-Buffering': 'no',
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Credentials': 'true'
+            }
+        )
+            
+    except Exception as e:
+        logger.error(f"Error streaming QR analytics: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error streaming QR analytics: {str(e)}"
         )

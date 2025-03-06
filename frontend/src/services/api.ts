@@ -94,13 +94,13 @@ export class QRService {
         console.error('Invalid VCard data received from server:', vcard)
         throw new Error('Invalid VCard data received from server')
       }
-
       // Convert to VCardResponse format
       return {
         id: vcard._id,
         _id: vcard._id,
         first_name: vcard.first_name,
         last_name: vcard.last_name,
+        user_id: vcard.user_id, // Add missing required user_id field
         email: vcard.email,
         mobile_number: vcard.mobile_number,
         work_number: vcard.work_number,
@@ -144,18 +144,51 @@ export const qrService = new QRService(axiosInstance)
 
 export class AnalyticsService {
   async getAnalytics(timeRange: string): Promise<AnalyticsData> {
-    const response = await axiosInstance.get(`/analytics/dashboard?timeRange=${timeRange}`)
-    return response.data
-  }
-
-  async getQRCodeAnalytics(qrCodeId: string, timeRange: string = '7d'): Promise<AnalyticsData> {
     try {
-      console.log('Fetching analytics for QR code:', qrCodeId);
-      const response = await axiosInstance.get(`/analytics/qr/${qrCodeId}?timeRange=${timeRange}`);
-      console.log('Analytics response:', response.data);
+      console.log('📊 Fetching general analytics with timeRange:', timeRange);
+      const response = await axiosInstance.get(`/analytics/metrics?timeRange=${timeRange}`);
+      console.log('📊 Analytics response:', response.data);
       return response.data;
     } catch (error) {
-      console.error('Error fetching QR code analytics:', error);
+      console.error('❌ Error fetching analytics:', error);
+      if (axios.isAxiosError(error)) {
+        console.error('Response:', error.response?.data);
+        console.error('Status:', error.response?.status);
+        console.error('Headers:', error.response?.headers);
+      }
+      throw error;
+    }
+  }
+
+  async getQRCodeAnalytics(qrCodeId: string, timeRange: string = '30'): Promise<AnalyticsData> {
+    try {
+      console.log('📊 Fetching QR analytics:', {
+        qrCodeId,
+        timeRange,
+        url: `/analytics/qr/${qrCodeId}?timeRange=${timeRange}d`
+      });
+
+      const token = localStorage.getItem('token');
+      console.log('🔑 Auth token present:', !!token);
+
+      const response = await axiosInstance.get(`/analytics/qr/${qrCodeId}?timeRange=${timeRange}d`);
+      console.log('📊 QR Analytics response:', response.data);
+      return response.data;
+    } catch (error) {
+      console.error('❌ Error fetching QR analytics:', error);
+      if (axios.isAxiosError(error)) {
+        console.error('Full error details:', {
+          response: error.response?.data,
+          status: error.response?.status,
+          headers: error.response?.headers,
+          config: {
+            url: error.config?.url,
+            method: error.config?.method,
+            baseURL: error.config?.baseURL,
+            headers: error.config?.headers
+          }
+        });
+      }
       throw error;
     }
   }

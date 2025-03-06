@@ -11,13 +11,14 @@ from typing import Dict, Any
 import traceback
 from fastapi import HTTPException
 import logging
+from fastapi import status
 
 # Configure logging
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 class Settings(BaseSettings):
-    ANALYTICS_SERVICE_URL: str = os.getenv("ANALYTICS_SERVICE_URL", "http://analytics-service:8000")
+    ANALYTICS_SERVICE_URL: str = os.getenv("ANALYTICS_SERVICE_URL", "http://analytics-service:8004")
     QR_SERVICE_URL: str = os.getenv("QR_SERVICE_URL", "http://qr-service:8003")
 
 settings = Settings()
@@ -26,7 +27,7 @@ app = FastAPI()
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["http://localhost:5173", "http://192.168.7.154:5173"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -93,6 +94,93 @@ async def create_qr_code(request: Request):
     except Exception as e:
         logger.error(f"Error generating QR code: {str(e)}")
         logger.error(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/v1/analytics/qr/{qr_id}/stream")
+async def stream_qr_analytics(
+    qr_id: str,
+    request: Request,
+    access_token: str = None
+):
+    """Forward SSE streaming requests to analytics service"""
+    try:
+        # Debug logging for request
+        logger.info(f"Received SSE request for QR {qr_id}")
+        logger.info(f"Request headers: {dict(request.headers)}")
+        logger.info(f"Query params: {dict(request.query_params)}")
+        
+        # Get access token from multiple possible sources
+        if not access_token:
+            # Try query params
+            access_token = request.query_params.get('access_token')
+            logger.info("Got token from query params")
+            
+        if not access_token:
+            # Try Authorization header
+            auth_header = request.headers.get('Authorization')
+            if auth_header and auth_header.startswith('Bearer '):
+                access_token = auth_header.split(' ')[1]
+                logger.info("Got token from Authorization header")
+                
+        if not access_token:
+            logger.error("No access token found in request")
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Access token is required"
+            )
+
+        logger.info(f"Found access token (first 10 chars): {access_token[:10]}...")
+
+        # Construct analytics service URL with token in both query params and header
+        analytics_url = f"{settings.ANALYTICS_SERVICE_URL}/api/v1/analytics/qr/{qr_id}/stream"
+        analytics_url += f"?access_token={access_token}"
+
+        # Forward the request as streaming response
+        async with httpx.AsyncClient() as client:
+            # Include token in both query params and Authorization header
+            headers = {
+                **dict(request.headers),
+                'Accept': 'text/event-stream',
+                'Cache-Control': 'no-cache',
+                'Connection': 'keep-alive',
+                'Authorization': f'Bearer {access_token}'
+            }
+            
+            logger.info(f"Forwarding request to analytics service: {analytics_url}")
+            logger.info(f"With headers: {headers}")
+            
+            response = await client.get(
+                analytics_url,
+                headers=headers,
+                timeout=None,  # No timeout for SSE connections
+                stream=True  # Enable streaming
+            )
+            
+            if response.status_code != 200:
+                error_content = await response.aread()
+                logger.error(f"Analytics service error: {error_content}")
+                return Response(
+                    content=error_content,
+                    status_code=response.status_code,
+                    media_type=response.headers.get('content-type', 'application/json')
+                )
+            
+            return Response(
+                content=response.aiter_raw(),
+                media_type="text/event-stream",
+                headers={
+                    'Cache-Control': 'no-cache',
+                    'Connection': 'keep-alive',
+                    'X-Accel-Buffering': 'no',
+                    'Access-Control-Allow-Origin': request.headers.get('origin', '*'),
+                    'Access-Control-Allow-Credentials': 'true'
+                }
+            )
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        logger.error(f"Error in SSE streaming: {str(e)}")
+        logger.error(f"Full error: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=str(e))
 
 async def make_request(

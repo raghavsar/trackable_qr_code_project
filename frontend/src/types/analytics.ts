@@ -36,14 +36,22 @@ export interface DailyMetric {
   desktop_scans: number
 }
 
+export interface ScanHistoryEntry {
+  date: string;
+  count: number;
+  action: string;
+}
+
 export interface AnalyticsData {
-  total_scans: number
-  contact_adds: number
-  vcf_downloads: number
-  mobile_scans: number
-  desktop_scans: number
-  daily_metrics: DailyMetric[]
-  recent_scans: ScanEvent[]
+  qr_id: string;
+  timeRange: string;
+  total_scans: number;
+  contact_adds: number;
+  vcf_downloads: number;
+  mobile_scans: number;
+  desktop_scans: number;
+  scan_history: ScanHistoryEntry[];
+  recent_scans: ScanEvent[];
 }
 
 export interface ScanEntry {
