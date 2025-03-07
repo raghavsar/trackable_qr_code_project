@@ -47,5 +47,10 @@ export interface QRCode {
   updated_at: string
   qr_image: string
   qr_image_url: string
-  metadata?: Record<string, any>
+  vcard_id?: string
+  metadata?: {
+    vcard_id?: string;
+    vcard_name?: string;
+    [key: string]: any;
+  }
 } 

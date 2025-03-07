@@ -7,7 +7,7 @@ export interface ScanEvent {
     os: string
     browser: string
   }
-  action_type: 'contact_add' | 'vcf_download'
+  action_type: 'scan' | 'contact_add' | 'vcf_download' | 'page_view'
 }
 
 export interface AnalyticsMetrics {
@@ -62,5 +62,5 @@ export interface ScanEntry {
     browser: string;
     os: string;
   };
-  action_type: 'contact_add' | 'vcf_download';
+  action_type: 'scan' | 'contact_add' | 'vcf_download' | 'page_view';
 } 

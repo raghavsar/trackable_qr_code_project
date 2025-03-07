@@ -5,10 +5,10 @@ import { useNavigate } from 'react-router-dom';
 const API_URL = import.meta.env.VITE_API_URL;
 
 interface UseAnalyticsSSEProps {
-  qrId?: string;
+  vcardId?: string;
 }
 
-export const useAnalyticsSSE = ({ qrId }: UseAnalyticsSSEProps = {}) => {
+export const useAnalyticsSSE = ({ vcardId }: UseAnalyticsSSEProps = {}) => {
   const [metrics, setMetrics] = useState<AnalyticsMetrics | null>(null);
   const [error, setError] = useState<Error | null>(null);
   const [isConnected, setIsConnected] = useState(false);
@@ -18,7 +18,7 @@ export const useAnalyticsSSE = ({ qrId }: UseAnalyticsSSEProps = {}) => {
   const fetchInitialMetrics = async () => {
     try {
       const response = await fetch(
-        `${API_URL}/api/v1/analytics/qr/${qrId}?timeRange=30d`,
+        `${API_URL}/api/v1/analytics/vcard/${vcardId}?timeRange=30d`,
         {
           headers: {
             'Authorization': `Bearer ${localStorage.getItem('token')}`
@@ -57,8 +57,8 @@ export const useAnalyticsSSE = ({ qrId }: UseAnalyticsSSEProps = {}) => {
         }
 
         // Create new connection with full URL
-        const baseUrl = qrId 
-          ? `/analytics/qr/${qrId}/stream`
+        const baseUrl = vcardId 
+          ? `/analytics/vcard/${vcardId}/stream`
           : `/analytics/stream`;
 
         // Ensure we're using the correct API URL and construct the full URL
@@ -128,7 +128,7 @@ export const useAnalyticsSSE = ({ qrId }: UseAnalyticsSSEProps = {}) => {
     };
 
     // Start the connection
-    console.log('🚀 Initializing SSE connection for QR ID:', qrId);
+    console.log('🚀 Initializing SSE connection for VCard ID:', vcardId);
     connectSSE();
 
     // Cleanup function
@@ -142,7 +142,7 @@ export const useAnalyticsSSE = ({ qrId }: UseAnalyticsSSEProps = {}) => {
         clearTimeout(reconnectTimeout);
       }
     };
-  }, [qrId, navigate]); // Dependencies
+  }, [vcardId, navigate]); // Dependencies
 
   return { metrics, error, isConnected };
 };

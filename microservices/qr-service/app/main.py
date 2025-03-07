@@ -16,8 +16,9 @@ from PIL import Image
 import requests
 from io import BytesIO
 import traceback
+from pydantic import BaseModel, Field
 
-from shared.models import QRCode, QRTemplate, QRDesignOptions, PyObjectId
+from shared.models import QRTemplate, QRDesignOptions, PyObjectId, QRCodeInfo
 from .database import get_database
 from .auth import get_current_user
 from .storage import MinioStorage, storage_service
@@ -25,6 +26,12 @@ from .qr_utils import hex_to_rgb, get_module_drawer, process_logo, generate_vcar
 
 # Configure logging
 logger = logging.getLogger(__name__)
+
+# Define Pydantic models
+class QRGenerateRequest(BaseModel):
+    vcard_id: str
+    design: Optional[QRDesignOptions] = None
+    template_id: Optional[str] = None
 
 app = FastAPI(
     title="QR Service",
@@ -58,6 +65,16 @@ async def startup_db_client():
 @app.on_event("shutdown")
 async def shutdown_db_client():
     app.mongodb_client.close()
+
+def get_user_id(user: dict) -> str:
+    """Safely get user ID from user object, handling both '_id' and 'id' formats."""
+    if '_id' in user:
+        return str(user['_id'])
+    elif 'id' in user:
+        return str(user['id'])
+    else:
+        logger.error(f"User object has no ID field: {user}")
+        raise HTTPException(status_code=500, detail="Invalid user object structure")
 
 def generate_qr_code(
     data: str,
@@ -138,135 +155,182 @@ async def notify_analytics(qr_code_id: str, event: str):
     # TODO: Implement analytics notification
     pass
 
-@app.post("/qrcodes")
-async def create_qr_code(request: Request, db = Depends(get_database)):
+@app.post("/api/v1/qrcodes")
+async def create_qr_code(
+    qr_data: QRGenerateRequest,
+    background_tasks: BackgroundTasks,
+    db = Depends(get_database),
+    current_user = Depends(get_current_user)
+):
+    """Generate a new QR code"""
     try:
-        logger.info("\n=== Starting QR Code Generation ===")
-        # Get request data
-        data = await request.json()
-        user_id = request.headers.get("X-User-ID")
-        logger.info(f"User ID: {user_id}")
-        logger.info(f"Request data: {data}")
-
-        if not user_id:
-            raise HTTPException(status_code=401, detail="User ID is required")
-
-        # Get vcard data either directly or from database
-        vcard_data = {}
-        vcard_id = data.get("vcard_id")
-        logger.info(f"VCard ID from request: {vcard_id}")
+        logger.info(f"Creating QR code for VCard ID: {qr_data.vcard_id}")
+        vcard_id = str(qr_data.vcard_id)
         
-        if vcard_id:
-            # Get VCard from database
-            logger.info(f"Fetching VCard from database: {vcard_id}")
+        # Validate vcard_id is not empty
+        if not vcard_id:
+            logger.error("VCard ID is required")
+            raise HTTPException(status_code=400, detail="VCard ID is required")
+        
+        # Get user ID safely
+        user_id = get_user_id(current_user)
+        logger.info(f"User ID: {user_id}")
+        
+        # Try to find VCard by ObjectId first
+        try:
             vcard = await db.vcards.find_one({"_id": PyObjectId(vcard_id)})
-            if not vcard:
-                logger.error(f"VCard not found: {vcard_id}")
-                raise HTTPException(status_code=404, detail="VCard not found")
-            vcard_data = vcard
-            logger.info(f"Found VCard: {vcard_data.get('first_name')} {vcard_data.get('last_name')}")
-        else:
-            # Use provided vcard_data
-            vcard_data = data.get("vcard_data", {})
-            if not vcard_data:
-                logger.error("No vcard_data provided")
-                raise HTTPException(status_code=400, detail="Either vcard_id or vcard_data is required")
-            logger.info("Using provided vcard_data")
-
-        # Get style config
-        default_style = {
-            "box_size": 10,
-            "border": 4,
-            "foreground_color": "#000000",
-            "background_color": "#FFFFFF",
-            "eye_color": "#ff4d26",
-            "module_color": "#0f50b5",
-            "pattern_style": "dots",
-            "error_correction": "Q",
-            "logo_url": None,  # Make logo optional
-            "logo_size": 0.23,
-            "logo_background": True,
-            "logo_round": True
-        }
-        # Merge with provided style config
-        style_data = {**default_style, **(data.get("design", data.get("style_config", {})))}
-        style_config = QRDesignOptions(**style_data)
-        logger.info(f"Style config: {style_config.dict()}")
-
-        # Handle profile photo if present
-        if vcard_data.get("profile_picture"):
-            logger.info("Processing profile photo")
-            photo_url = await storage_service.upload_profile_photo(
-                vcard_data["profile_picture"],
-                user_id,
-                str(vcard_data.get("_id", ""))
-            )
-            if photo_url:
-                logger.info(f"Profile photo uploaded: {photo_url}")
-                vcard_data["profile_picture"] = photo_url
-            else:
-                logger.warning("Failed to upload profile photo")
-                del vcard_data["profile_picture"]
-
+        except Exception as e:
+            logger.info(f"Error finding VCard with ObjectId: {e}")
+            # If that fails, try as string
+            logger.info(f"Trying to find VCard with string ID: {vcard_id}")
+            vcard = await db.vcards.find_one({"_id": vcard_id})
+            
+        if not vcard:
+            logger.error(f"VCard not found: {vcard_id}")
+            raise HTTPException(status_code=404, detail=f"VCard not found: {vcard_id}")
+        
+        logger.info(f"Found VCard: {vcard.get('first_name', '')} {vcard.get('last_name', '')}")
+        
+        # Get design options
+        design_options = qr_data.design
+        
+        # If template_id is provided, get design from template
+        if qr_data.template_id:
+            logger.info(f"Using template ID: {qr_data.template_id}")
+            template = await db.qr_templates.find_one({
+                "_id": PyObjectId(qr_data.template_id),
+                "user_id": user_id
+            })
+            if not template:
+                logger.error(f"Template not found: {qr_data.template_id}")
+                raise HTTPException(status_code=404, detail="Template not found")
+            design_options = QRDesignOptions(**template["design_options"])
+        
+        # If no design options provided, use default
+        if not design_options:
+            logger.info("Using default design options")
+            design_options = QRDesignOptions()
+        
         # Generate QR code
         logger.info("Generating QR code")
-        qr_code_bytes = await generate_vcard_qr(vcard_data, style_config)
+        qr_code_bytes = await generate_vcard_qr(vcard, design_options)
         
-        # Get the size of the generated QR code
-        qr_code_bytes.seek(0, 2)  # Seek to end
-        size = qr_code_bytes.tell()  # Get current position (size)
-        qr_code_bytes.seek(0)  # Reset to beginning
-        logger.info(f"QR code generated, size: {size} bytes")
-        
-        # Generate unique object name with user-centric structure
+        # Generate unique object name
         timestamp = datetime.utcnow().timestamp()
-        object_name = f"users/{user_id}/qrcodes/{str(vcard_data.get('_id', ''))}_{timestamp}.png"
+        object_name = f"users/{user_id}/qrcodes/{vcard_id}_{timestamp}.png"
         logger.info(f"Object name: {object_name}")
         
-        # Upload to MinIO and get URL
-        logger.info("Uploading QR code to MinIO")
+        # Upload to storage
+        logger.info("Uploading QR code to storage")
         qr_image_url = await storage.upload_qr_code(qr_code_bytes, object_name)
         logger.info(f"QR code uploaded, URL: {qr_image_url}")
         
-        # Create database record
+        # Create QR code record in database
+        logger.info("Creating QR code record in database")
+        now = datetime.utcnow()
         qr_code_doc = {
-            "vcard_id": str(vcard_data.get("_id", "")),
+            "vcard_id": vcard_id,  # Ensure vcard_id is set
             "user_id": user_id,
             "object_name": object_name,
             "qr_image_url": qr_image_url,
-            "created_at": datetime.utcnow(),
-            "updated_at": datetime.utcnow(),
+            "created_at": now,
+            "updated_at": now,
             "total_scans": 0,
             "type": "vcard"
         }
         
-        logger.info("Creating database record")
         result = await db.qrcodes.insert_one(qr_code_doc)
-        logger.info(f"Database record created, ID: {result.inserted_id}")
+        qr_code_id = str(result.inserted_id)
+        logger.info(f"QR code record created, ID: {qr_code_id}")
         
-        # Format response for frontend
-        response_data = {
-            "id": str(result.inserted_id),
-            "tracking_id": str(result.inserted_id),
-            "qr_image": base64.b64encode(qr_code_bytes.getvalue()).decode('utf-8'),
-            "qr_image_url": qr_image_url,
-            "created_at": qr_code_doc["created_at"].isoformat(),
-            "type": "vcard",
-            "total_scans": 0,
-            "metadata": {
-                "vcard_id": str(vcard_data.get("_id", "")),
-                "vcard_name": f"{vcard_data.get('first_name', '')} {vcard_data.get('last_name', '')}"
-            }
+        # Create QR code info object
+        qr_code_info = {
+            "image_url": qr_image_url,
+            "design_options": design_options.dict() if hasattr(design_options, "dict") else design_options,
+            "created_at": now,
+            "updated_at": now
         }
         
-        logger.info("=== QR Code Generation Complete ===")
-        return JSONResponse(content=response_data)
+        # Initialize analytics if it doesn't exist
+        analytics_info = {
+            "total_scans": 0,
+            "scans": [],
+            "scans_by_date": {},
+            "scans_by_device": {}
+        }
+        
+        # Update VCard with QR code info
+        logger.info(f"Updating VCard with QR code info: {vcard_id}")
+        
+        # Determine the correct ID format for the update
+        vcard_id_for_update = PyObjectId(vcard_id) if isinstance(vcard["_id"], PyObjectId) else vcard_id
+        
+        # Log the update operation details
+        logger.info(f"VCard ID for update: {vcard_id_for_update}, Type: {type(vcard_id_for_update)}")
+        logger.info(f"VCard _id from document: {vcard['_id']}, Type: {type(vcard['_id'])}")
+        
+        update_result = await db.vcards.update_one(
+            {"_id": vcard_id_for_update},
+            {
+                "$set": {
+                    "qr_code": qr_code_info
+                },
+                "$setOnInsert": {
+                    "analytics": analytics_info
+                }
+            }
+        )
+        
+        logger.info(f"VCard update result: matched={update_result.matched_count}, modified={update_result.modified_count}")
+        
+        if update_result.matched_count == 0:
+            logger.warning(f"VCard not found during update: {vcard_id}")
+        elif update_result.modified_count == 0:
+            logger.warning(f"VCard found but not modified: {vcard_id}")
+        else:
+            logger.info(f"VCard updated successfully: {vcard_id}")
+        
+        # Format response
+        response = {
+            "id": qr_code_id,
+            "vcard_id": vcard_id,  # Ensure vcard_id is included in the response
+            "qr_image_url": qr_image_url,
+            "created_at": now.isoformat(),
+            "updated_at": now.isoformat(),
+            "total_scans": 0
+        }
+        
+        return response
     except Exception as e:
-        logger.error("\n=== QR Code Generation Failed ===")
-        logger.error(f"Error type: {type(e).__name__}")
-        logger.error(f"Error message: {str(e)}")
-        logger.error("Full error details:", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Failed to generate QR code: {str(e)}")
+        logger.error(f"Error generating QR code: {e}")
+        logger.error(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/qrcodes")
+async def create_qr_code_legacy(
+    qr_data: QRGenerateRequest,
+    background_tasks: BackgroundTasks,
+    db = Depends(get_database),
+    current_user = Depends(get_current_user)
+):
+    """Legacy endpoint for backward compatibility"""
+    logger.info("Using legacy /qrcodes endpoint, please update to use /api/v1/qrcodes")
+    try:
+        # Get user ID safely
+        user_id = get_user_id(current_user)
+        logger.info(f"User ID from legacy endpoint: {user_id}")
+        
+        # Call the main endpoint function
+        response = await create_qr_code(qr_data, background_tasks, db, current_user)
+        logger.info("Legacy endpoint successfully created QR code")
+        return response
+    except Exception as e:
+        logger.error(f"Error in legacy endpoint: {str(e)}")
+        # Re-raise the exception with the original status code if it's an HTTPException
+        if isinstance(e, HTTPException):
+            raise e
+        # Otherwise, wrap it in a 500 error
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/qrcodes")
 async def list_qr_codes(
@@ -275,11 +339,13 @@ async def list_qr_codes(
 ):
     """Get all QR codes for the current user"""
     try:
-        logger.info(f"Fetching QR codes for user: {current_user['id']}")
+        # Get user ID safely
+        user_id = get_user_id(current_user)
+        logger.info(f"Fetching QR codes for user: {user_id}")
         
         # Get QR codes for the user
         qr_codes = await db.qrcodes.find({
-            "user_id": current_user["id"]
+            "user_id": user_id
         }).sort("created_at", -1).to_list(None)
         
         logger.info(f"Found {len(qr_codes)} QR codes")
@@ -313,31 +379,43 @@ async def list_qr_codes(
             detail=f"Failed to fetch QR codes: {str(e)}"
         )
 
-@app.get("/qrcodes/{qr_id}")
+@app.get("/api/v1/qrcodes/{qr_id}")
 async def get_qr_code(
     qr_id: str,
-    current_user: dict = Depends(get_current_user),
-    db = Depends(get_database)
+    db = Depends(get_database),
+    current_user = Depends(get_current_user)
 ):
+    """Get a specific QR code by ID"""
     try:
-        # Get QR code and verify ownership
+        logger.info(f"Getting QR code: {qr_id}")
+        
+        # Get user ID safely
+        user_id = get_user_id(current_user)
+        logger.info(f"User ID: {user_id}")
+        
+        # Find QR code
         qr_code = await db.qrcodes.find_one({
             "_id": PyObjectId(qr_id),
-            "user_id": current_user["id"]
+            "user_id": user_id
         })
-        if not qr_code:
-            raise HTTPException(status_code=404, detail="QR code not found")
         
+        if not qr_code:
+            logger.error(f"QR code not found or not owned by user: {qr_id}")
+            raise HTTPException(status_code=404, detail="QR code not found or not owned by user")
+            
         # Format response
-        qr_code["_id"] = str(qr_code["_id"])
-        return qr_code
+        return {
+            "id": str(qr_code["_id"]),
+            "vcard_id": qr_code["vcard_id"],
+            "qr_image_url": qr_code["qr_image_url"],
+            "created_at": qr_code["created_at"].isoformat(),
+            "updated_at": qr_code["updated_at"].isoformat(),
+            "total_scans": qr_code["total_scans"],
+            "type": qr_code["type"]
+        }
     except Exception as e:
-        if isinstance(e, HTTPException):
-            raise e
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to fetch QR code: {str(e)}"
-        )
+        logger.error(f"Error getting QR code: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.put("/qrcodes/{qr_id}")
 async def update_qr_code(
@@ -347,14 +425,23 @@ async def update_qr_code(
     db = Depends(get_database),
     data: Dict[str, Any] = Body(...)
 ):
+    """Update an existing QR code"""
     try:
-        # Verify ownership before update
+        logger.info(f"Updating QR code: {qr_id}")
+        
+        # Get user ID safely
+        user_id = get_user_id(current_user)
+        logger.info(f"User ID: {user_id}")
+        
+        # Find existing QR code
         old_qr_code = await db.qrcodes.find_one({
             "_id": PyObjectId(qr_id),
-            "user_id": current_user["id"]
+            "user_id": user_id
         })
+        
         if not old_qr_code:
-            raise HTTPException(status_code=404, detail="QR code not found")
+            logger.error(f"QR code not found or not owned by user: {qr_id}")
+            raise HTTPException(status_code=404, detail="QR code not found or not owned by user")
         
         # Store old VCard ID for deletion
         old_vcard_id = old_qr_code.get("vcard_id")
@@ -368,7 +455,7 @@ async def update_qr_code(
             template = await db.templates.find_one({
                 "_id": PyObjectId(data["template_id"]),
                 "$or": [
-                    {"user_id": current_user["id"]},
+                    {"user_id": user_id},
                     {"is_public": True}
                 ]
             })
@@ -381,7 +468,7 @@ async def update_qr_code(
         
         # Generate unique object name with user-centric structure
         timestamp = datetime.utcnow().timestamp()
-        object_name = f"users/{current_user['id']}/qrcodes/{data['vcard_id']}_{timestamp}.png"
+        object_name = f"users/{user_id}/qrcodes/{data['vcard_id']}_{timestamp}.png"
         
         # Upload to MinIO and get public URL
         qr_image_url = await storage.upload_qr_code(qr_image, object_name)
@@ -464,14 +551,23 @@ async def delete_qr_code(
     current_user: dict = Depends(get_current_user),
     db = Depends(get_database)
 ):
+    """Delete a QR code"""
     try:
-        # Verify ownership before deletion
+        logger.info(f"Deleting QR code: {qr_id}")
+        
+        # Get user ID safely
+        user_id = get_user_id(current_user)
+        logger.info(f"User ID: {user_id}")
+        
+        # Find QR code to delete
         qr_code = await db.qrcodes.find_one({
             "_id": PyObjectId(qr_id),
-            "user_id": current_user["id"]
+            "user_id": user_id
         })
+        
         if not qr_code:
-            raise HTTPException(status_code=404, detail="QR code not found")
+            logger.error(f"QR code not found or not owned by user: {qr_id}")
+            raise HTTPException(status_code=404, detail="QR code not found or not owned by user")
         
         # Delete from MinIO if object_name exists
         if "object_name" in qr_code:
@@ -585,28 +681,38 @@ async def get_qr_code_by_vcard(
     current_user: dict = Depends(get_current_user),
     db = Depends(get_database)
 ):
-    qr_code = await db.qrcodes.find_one({
-        "vcard_id": vcard_id,
+    vcard = await db.vcards.find_one({
+        "_id": PyObjectId(vcard_id),
         "user_id": current_user["id"]
     })
-    if not qr_code:
+    if not vcard or not vcard.get("qr_code"):
         raise HTTPException(status_code=404, detail="QR code not found")
-    qr_code["_id"] = str(qr_code["_id"])
-    return qr_code
+    
+    # Extract QR code information from VCard
+    qr_info = {
+        "_id": str(vcard["_id"]),
+        "vcard_id": str(vcard["_id"]),
+        "user_id": current_user["id"],
+        "url": vcard["qr_code"]["image_url"],
+        "created_at": vcard["qr_code"]["created_at"],
+        "updated_at": vcard["qr_code"]["updated_at"],
+        "design_options": vcard["qr_code"]["design_options"]
+    }
+    
+    return qr_info
 
 @app.post("/qrcodes/upload-logo")
 async def upload_logo(
     logo: UploadFile = File(...),
-    current_user: dict = Depends(get_current_user)
+    current_user = Depends(get_current_user)
 ):
-    """Upload a logo for QR code."""
+    """Upload a logo for QR code"""
     try:
-        user_id = current_user.get("id")
-        if not user_id:
-            raise HTTPException(
-                status_code=401,
-                detail="User ID not found in token"
-            )
+        logger.info(f"Uploading logo: {logo.filename}")
+        
+        # Get user ID safely
+        user_id = get_user_id(current_user)
+        logger.info(f"User ID: {user_id}")
 
         # Validate file size
         contents = await logo.read()
@@ -655,50 +761,117 @@ async def generate_qr(
                 detail="User ID not found in token"
             )
 
-        # Verify VCard ownership first
-        vcard = await db.vcards.find_one({
-            "_id": PyObjectId(vcard_id),
-            "user_id": user_id
-        })
+        logger.info(f"Generating QR code for VCard ID: {vcard_id}, User ID: {user_id}")
+
+        # Try to find VCard by ObjectId first
+        vcard = None
+        try:
+            vcard = await db.vcards.find_one({"_id": PyObjectId(vcard_id), "user_id": user_id})
+            logger.info(f"Found VCard with ObjectId: {vcard_id}")
+        except Exception as e:
+            logger.info(f"Error finding VCard with ObjectId: {e}")
+            # If that fails, try as string
+            logger.info(f"Trying to find VCard with string ID: {vcard_id}")
+            vcard = await db.vcards.find_one({"_id": vcard_id, "user_id": user_id})
+            
         if not vcard:
+            logger.error(f"VCard not found or not authorized: {vcard_id}")
             raise HTTPException(
-                status_code=403,
-                detail="Not authorized to access this VCard"
+                status_code=404,
+                detail="VCard not found or not authorized"
             )
 
-        # Generate QR code with direct vCard data
-        qr_image_bytes = await generate_vcard_qr(vcard, QRDesignOptions())
+        logger.info(f"Found VCard: {vcard.get('first_name', '')} {vcard.get('last_name', '')}")
+
+        # Generate QR code with default design options
+        design_options = QRDesignOptions()
+        logger.info(f"Using design options: {design_options.dict()}")
+        
+        qr_image_bytes = await generate_vcard_qr(vcard, design_options)
         qr_image = BytesIO(qr_image_bytes)
+        logger.info("QR code generated successfully")
 
         # Generate unique object name with user-centric structure
         timestamp = datetime.utcnow().timestamp()
         object_name = f"users/{user_id}/qrcodes/{vcard_id}_{timestamp}.png"
+        logger.info(f"Object name: {object_name}")
 
         # Upload to MinIO and get URL
         qr_code_url = await storage.upload_qr_code(qr_image, object_name)
+        logger.info(f"QR code uploaded, URL: {qr_code_url}")
 
-        # Save QR code information to database
+        # Create QR code info object
+        now = datetime.utcnow()
+        qr_code_info = {
+            "image_url": qr_code_url,
+            "design_options": design_options.dict(),
+            "created_at": now,
+            "updated_at": now
+        }
+        
+        # Initialize analytics if it doesn't exist
+        analytics_info = {
+            "total_scans": 0,
+            "scans": [],
+            "scans_by_date": {},
+            "scans_by_device": {}
+        }
+
+        # Determine the correct ID format for the update
+        vcard_id_for_update = PyObjectId(vcard_id) if isinstance(vcard["_id"], PyObjectId) else vcard_id
+        
+        # Log the update operation details
+        logger.info(f"VCard ID for update: {vcard_id_for_update}, Type: {type(vcard_id_for_update)}")
+        logger.info(f"VCard _id from document: {vcard['_id']}, Type: {type(vcard['_id'])}")
+
+        # Update VCard document with QR code information and initialize analytics if needed
+        update_result = await db.vcards.update_one(
+            {"_id": vcard_id_for_update},
+            {
+                "$set": {
+                    "qr_code": qr_code_info
+                },
+                "$setOnInsert": {
+                    "analytics": analytics_info
+                }
+            },
+            upsert=False
+        )
+        
+        logger.info(f"VCard update result: matched={update_result.matched_count}, modified={update_result.modified_count}")
+        
+        if update_result.matched_count == 0:
+            logger.warning(f"VCard not found during update: {vcard_id}")
+            raise HTTPException(status_code=404, detail="VCard not found during update")
+        elif update_result.modified_count == 0:
+            logger.warning(f"VCard found but not modified: {vcard_id}")
+        else:
+            logger.info(f"VCard updated successfully with QR code info: {vcard_id}")
+        
+        # Also create a record in the qrcodes collection for consistency
         qr_code_doc = {
-            "vcard_id": vcard_id,
+            "vcard_id": str(vcard_id),
             "user_id": user_id,
             "object_name": object_name,
-            "url": qr_code_url,
-            "created_at": datetime.utcnow(),
+            "qr_image_url": qr_code_url,
+            "created_at": now,
+            "updated_at": now,
             "total_scans": 0,
             "type": "vcard"
         }
         
-        result = await db.qrcodes.insert_one(qr_code_doc)
+        await db.qrcodes.insert_one(qr_code_doc)
+        logger.info(f"QR code record created in qrcodes collection for VCard: {vcard_id}")
         
         return {
             "qr_code_url": qr_code_url,
             "vcard_id": vcard_id,
-            "user_id": user_id,
-            "id": str(result.inserted_id)
+            "user_id": user_id
         }
         
     except Exception as e:
         logger.error(f"Error generating QR code: {str(e)}")
+        logger.error(traceback.format_exc())
         raise HTTPException(
             status_code=500,
             detail=f"Error generating QR code: {str(e)}"
@@ -711,22 +884,22 @@ async def get_qr(
     db = Depends(get_database)
 ):
     try:
-        # Find QR code in database
-        qr_code = await db.qrcodes.find_one({
-            "vcard_id": vcard_id,
+        # Find VCard in database
+        vcard = await db.vcards.find_one({
+            "_id": PyObjectId(vcard_id),
             "user_id": current_user["id"]
         })
         
-        if not qr_code:
+        if not vcard or not vcard.get("qr_code"):
             raise HTTPException(status_code=404, detail="QR code not found")
             
-        # Get fresh URL (in case the old one expired)
-        fresh_url = await storage.get_qr_code_url(qr_code["object_name"])
+        # Get QR code information from VCard
+        qr_code = vcard["qr_code"]
         
         return {
-            "qr_code_url": fresh_url,
+            "qr_code_url": qr_code["image_url"],
             "vcard_id": vcard_id,
-            "total_scans": qr_code.get("total_scans", 0)
+            "total_scans": vcard.get("analytics", {}).get("total_scans", 0)
         }
         
     except Exception as e:
@@ -742,23 +915,30 @@ async def delete_qr(
     db = Depends(get_database)
 ):
     try:
-        # Find QR code in database
-        qr_code = await db.qrcodes.find_one({
-            "vcard_id": vcard_id,
+        # Find VCard in database
+        vcard = await db.vcards.find_one({
+            "_id": PyObjectId(vcard_id),
             "user_id": current_user["id"]
         })
         
-        if not qr_code:
+        if not vcard or not vcard.get("qr_code"):
             raise HTTPException(status_code=404, detail="QR code not found")
             
-        # Delete from MinIO
-        await storage.delete_qr_code(qr_code["object_name"])
+        # Get object name from image URL
+        image_url = vcard["qr_code"]["image_url"]
+        object_name = image_url.split("/")[-1]
         
-        # Delete from database
-        await db.qrcodes.delete_one({
-            "vcard_id": vcard_id,
-            "user_id": current_user["id"]
-        })
+        # Delete from MinIO if possible
+        try:
+            await storage.delete_qr_code(f"users/{current_user['id']}/qrcodes/{object_name}")
+        except Exception as storage_error:
+            logger.warning(f"Error deleting QR code from storage: {storage_error}")
+        
+        # Remove QR code from VCard document
+        await db.vcards.update_one(
+            {"_id": PyObjectId(vcard_id)},
+            {"$unset": {"qr_code": ""}}
+        )
         
         return {"message": "QR code deleted successfully"}
         
@@ -775,13 +955,26 @@ async def create_template(
     current_user: dict = Depends(get_current_user),
     db = Depends(get_database)
 ):
-    """Create a new QR code template."""
+    """Create a new QR template"""
     try:
-        template.user_id = current_user["id"]
-        template_dict = template.dict(exclude={"id"})
+        logger.info(f"Creating template: {template.name}")
+        
+        # Get user ID safely
+        user_id = get_user_id(current_user)
+        logger.info(f"User ID: {user_id}")
+        
+        # Create template document
+        template_doc = {
+            "user_id": user_id,
+            "name": template.name,
+            "description": template.description,
+            "design_options": template.design.dict(),
+            "created_at": datetime.utcnow().isoformat(),
+            "updated_at": datetime.utcnow().isoformat()
+        }
         
         # Insert template
-        result = await db.templates.insert_one(template_dict)
+        result = await db.templates.insert_one(template_doc)
         
         # Get created template
         created_template = await db.templates.find_one({"_id": result.inserted_id})
@@ -802,10 +995,14 @@ async def list_templates(
 ):
     """List available templates (user's own templates and public templates)."""
     try:
+        # Get user ID safely
+        user_id = get_user_id(current_user)
+        logger.info(f"Listing templates for user: {user_id}")
+        
         # Get user's templates and public templates
         templates = await db.templates.find({
             "$or": [
-                {"user_id": current_user["id"]},
+                {"user_id": user_id},
                 {"is_public": True}
             ]
         }).to_list(None)
@@ -828,18 +1025,26 @@ async def get_template(
     current_user: dict = Depends(get_current_user),
     db = Depends(get_database)
 ):
-    """Get a specific template."""
+    """Get a specific template by ID"""
     try:
+        logger.info(f"Getting template: {template_id}")
+        
+        # Get user ID safely
+        user_id = get_user_id(current_user)
+        logger.info(f"User ID: {user_id}")
+        
+        # Find template
         template = await db.templates.find_one({
             "_id": PyObjectId(template_id),
             "$or": [
-                {"user_id": current_user["id"]},
+                {"user_id": user_id},
                 {"is_public": True}
             ]
         })
         
         if not template:
-            raise HTTPException(status_code=404, detail="Template not found")
+            logger.error(f"Template not found or not accessible: {template_id}")
+            raise HTTPException(status_code=404, detail="Template not found or not accessible")
         
         template["_id"] = str(template["_id"])
         return template
@@ -857,16 +1062,23 @@ async def update_template(
     current_user: dict = Depends(get_current_user),
     db = Depends(get_database)
 ):
-    """Update a template."""
+    """Update a template"""
     try:
-        # Verify ownership
+        logger.info(f"Updating template: {template_id}")
+        
+        # Get user ID safely
+        user_id = get_user_id(current_user)
+        logger.info(f"User ID: {user_id}")
+        
+        # Find existing template
         existing_template = await db.templates.find_one({
             "_id": PyObjectId(template_id),
-            "user_id": current_user["id"]
+            "user_id": user_id
         })
         
         if not existing_template:
-            raise HTTPException(status_code=404, detail="Template not found")
+            logger.error(f"Template not found or not owned by user: {template_id}")
+            raise HTTPException(status_code=404, detail="Template not found or not owned by user")
         
         # Update template
         update_data = template_update.dict(exclude={"id", "user_id"})
@@ -895,16 +1107,26 @@ async def delete_template(
     current_user: dict = Depends(get_current_user),
     db = Depends(get_database)
 ):
-    """Delete a template."""
+    """Delete a template"""
     try:
-        # Verify ownership
-        result = await db.templates.delete_one({
+        logger.info(f"Deleting template: {template_id}")
+        
+        # Get user ID safely
+        user_id = get_user_id(current_user)
+        logger.info(f"User ID: {user_id}")
+        
+        # Find template to delete
+        template = await db.templates.find_one({
             "_id": PyObjectId(template_id),
-            "user_id": current_user["id"]
+            "user_id": user_id
         })
         
-        if result.deleted_count == 0:
-            raise HTTPException(status_code=404, detail="Template not found")
+        if not template:
+            logger.error(f"Template not found or not owned by user: {template_id}")
+            raise HTTPException(status_code=404, detail="Template not found or not owned by user")
+        
+        # Delete from database
+        await db.templates.delete_one({"_id": PyObjectId(template_id)})
         
         return {"message": "Template deleted successfully"}
     except Exception as e:
@@ -996,4 +1218,66 @@ async def generate_vcard_qr(
         raise HTTPException(
             status_code=500,
             detail=f"Failed to generate QR code: {str(e)}"
-        ) 
+        )
+
+@app.post("/api/v1/qrcodes/fix-missing-vcard-id")
+async def fix_missing_vcard_id(
+    db = Depends(get_database),
+    current_user = Depends(get_current_user)
+):
+    """Fix QR codes with missing vcard_id field"""
+    try:
+        # Get user ID safely
+        user_id = get_user_id(current_user)
+        logger.info(f"Fixing QR codes with missing vcard_id for user: {user_id}")
+        
+        # Find QR codes with missing vcard_id
+        qr_codes = await db.qrcodes.find({
+            "user_id": user_id,
+            "$or": [
+                {"vcard_id": {"$exists": False}},
+                {"vcard_id": None},
+                {"vcard_id": ""}
+            ]
+        }).to_list(None)
+        
+        if not qr_codes:
+            logger.info(f"No QR codes with missing vcard_id found for user: {user_id}")
+            return {"message": "No QR codes with missing vcard_id found", "fixed_count": 0}
+        
+        logger.info(f"Found {len(qr_codes)} QR codes with missing vcard_id")
+        
+        # Fix each QR code
+        fixed_count = 0
+        for qr_code in qr_codes:
+            qr_id = qr_code["_id"]
+            
+            # Try to find a VCard for this user
+            vcard = await db.vcards.find_one({"user_id": user_id})
+            if not vcard:
+                logger.warning(f"No VCard found for user: {user_id}, skipping QR code: {qr_id}")
+                continue
+            
+            vcard_id = str(vcard["_id"])
+            logger.info(f"Updating QR code {qr_id} with vcard_id: {vcard_id}")
+            
+            # Update the QR code
+            result = await db.qrcodes.update_one(
+                {"_id": qr_id},
+                {"$set": {"vcard_id": vcard_id}}
+            )
+            
+            if result.modified_count > 0:
+                fixed_count += 1
+                logger.info(f"Successfully updated QR code: {qr_id}")
+            else:
+                logger.warning(f"Failed to update QR code: {qr_id}")
+        
+        return {
+            "message": f"Fixed {fixed_count} QR codes with missing vcard_id",
+            "fixed_count": fixed_count
+        }
+    except Exception as e:
+        logger.error(f"Error fixing QR codes with missing vcard_id: {e}")
+        logger.error(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=str(e)) 

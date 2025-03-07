@@ -10,7 +10,7 @@ import "./styles/globals.css"
 import GoogleCallback from "./pages/auth/GoogleCallback"
 import { ProtectedRoute } from "./components/ProtectedRoute"
 import AnalyticsDashboard from "./pages/analytics/Dashboard"
-import QRCodeAnalytics from "./pages/analytics/QRCodeAnalytics"
+import VCardAnalytics from "./pages/analytics/VCardAnalytics"
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools'
 import { GoogleOAuthProvider } from '@react-oauth/google'
@@ -97,9 +97,14 @@ function App() {
                       <AnalyticsDashboard />
                     </ProtectedRoute>
                   } />
+                  <Route path="analytics/vcard/:id" element={
+                    <ProtectedRoute>
+                      <VCardAnalytics />
+                    </ProtectedRoute>
+                  } />
                   <Route path="analytics/qr/:id" element={
                     <ProtectedRoute>
-                      <QRCodeAnalytics />
+                      <VCardAnalytics />
                     </ProtectedRoute>
                   } />
                 </Route>

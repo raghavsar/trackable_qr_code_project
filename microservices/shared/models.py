@@ -64,6 +64,72 @@ class AddressData(BaseModel):
     zip_code: Optional[str] = None
     country: Optional[str] = None
 
+# QR Code Design Options
+class QRDesignOptions(BaseModel):
+    box_size: int = Field(10, gt=0, description="Box size must be positive")
+    border: int = Field(4, ge=0, description="Border must be non-negative")
+    foreground_color: str = Field("#000000", description="Foreground color in hex format (#RRGGBB)")
+    background_color: str = Field("#FFFFFF", description="Background color in hex format (#RRGGBB)")
+    eye_color: str = Field("#ff4d26", description="Color for eye patterns in hex format (#RRGGBB)")
+    module_color: str = Field("#0f50b5", description="Color for data modules in hex format (#RRGGBB)")
+    pattern_style: str = Field("dots", description="Pattern style for QR code")
+    eye_style: str = Field("dots", description="Pattern style for eye patterns")
+    error_correction: str = Field("Q", description="Error correction level (L, M, Q, H)")
+    logo_url: Optional[str] = None  # Make logo optional by default
+    logo_size: Optional[float] = Field(0.23, gt=0, lt=1, description="Logo size as a fraction of QR code size (0-1)")
+    logo_background: Optional[bool] = True
+    logo_round: Optional[bool] = True
+
+    @validator('pattern_style', 'eye_style')
+    def validate_pattern_style(cls, v):
+        valid_patterns = ['square', 'rounded', 'dots', 'gapped', 'vertical', 'horizontal']
+        if v.lower() not in valid_patterns:
+            raise ValueError(f"Invalid pattern style. Must be one of: {', '.join(valid_patterns)}")
+        return v.lower()
+
+    @validator('error_correction')
+    def validate_error_correction(cls, v):
+        valid_levels = ['L', 'M', 'Q', 'H']
+        if v not in valid_levels:
+            raise ValueError(f"Error correction must be one of: {', '.join(valid_levels)}")
+        return v
+
+    @validator('foreground_color', 'background_color', 'eye_color', 'module_color')
+    def validate_color(cls, v):
+        if not re.match(r'^#[0-9A-Fa-f]{6}$', v):
+            raise ValueError("Colors must be in hex format (#RRGGBB)")
+        return v
+
+    class Config:
+        populate_by_name = True
+
+# New QR Code Info class for embedding in VCard
+class QRCodeInfo(BaseModel):
+    image_url: Optional[str] = None
+    design_options: QRDesignOptions = Field(default_factory=QRDesignOptions)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+    class Config:
+        populate_by_name = True
+        json_encoders = {
+            datetime: lambda dt: dt.isoformat()
+        }
+
+# Enhanced Analytics structure
+class VCardAnalytics(BaseModel):
+    total_scans: int = 0
+    last_scan: Optional[datetime] = None
+    scans: List[Dict] = Field(default_factory=list)
+    scans_by_date: Dict[str, int] = Field(default_factory=dict)
+    scans_by_device: Dict[str, int] = Field(default_factory=dict)
+
+    class Config:
+        populate_by_name = True
+        json_encoders = {
+            datetime: lambda dt: dt.isoformat()
+        }
+
 class VCardData(BaseModel):
     """VCard data model aligned with VCard 3.0 format"""
     id: Optional[PyObjectId] = Field(default_factory=PyObjectId, alias="_id")
@@ -81,12 +147,10 @@ class VCardData(BaseModel):
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
     user_id: Optional[str] = None
-    tracking_id: Optional[str] = Field(default_factory=lambda: f"tr_{uuid.uuid4().hex[:6]}")
-    analytics: Optional[Dict] = Field(default_factory=lambda: {
-        "scans": [],
-        "last_scan": None,
-        "total_scans": 0
-    })
+    
+    # New fields for unified structure
+    qr_code: Optional[QRCodeInfo] = None
+    analytics: VCardAnalytics = Field(default_factory=VCardAnalytics)
 
     @validator('mobile_number', 'work_number')
     def validate_phone(cls, v):
@@ -129,14 +193,14 @@ class VCardData(BaseModel):
         }
 
 class ScanTrackingEvent(BaseModel):
-    tracking_id: str
-    vcard_id: str
+    vcard_id: str  # Only need vcard_id now
     timestamp: datetime = Field(default_factory=datetime.utcnow)
     user_agent: Optional[str] = None
     ip_address: Optional[str] = None
     success: bool = True
     device_info: Optional[Dict] = None
     headers: Optional[Dict] = None
+    action_type: str = "scan"  # Default action type
 
     class Config:
         populate_by_name = True
@@ -144,62 +208,7 @@ class ScanTrackingEvent(BaseModel):
             datetime: lambda dt: dt.isoformat()
         }
 
-# QR Code Models
-class QRCode(BaseModel):
-    id: PyObjectId = Field(default_factory=PyObjectId, alias="_id")
-    vcard_id: str
-    user_id: str
-    image: str
-    created_at: datetime
-    updated_at: datetime
-    total_scans: int = 0
-
-    class Config:
-        populate_by_name = True
-        arbitrary_types_allowed = True
-        json_encoders = {
-            ObjectId: str,
-            datetime: lambda dt: dt.isoformat()
-        }
-
-class QRDesignOptions(BaseModel):
-    box_size: int = Field(10, gt=0, description="Box size must be positive")
-    border: int = Field(4, ge=0, description="Border must be non-negative")
-    foreground_color: str = Field("#000000", description="Foreground color in hex format (#RRGGBB)")
-    background_color: str = Field("#FFFFFF", description="Background color in hex format (#RRGGBB)")
-    eye_color: str = Field("#ff4d26", description="Color for eye patterns in hex format (#RRGGBB)")
-    module_color: str = Field("#0f50b5", description="Color for data modules in hex format (#RRGGBB)")
-    pattern_style: str = Field("dots", description="Pattern style for QR code")
-    eye_style: str = Field("dots", description="Pattern style for eye patterns")
-    error_correction: str = Field("Q", description="Error correction level (L, M, Q, H)")
-    logo_url: Optional[str] = None  # Make logo optional by default
-    logo_size: Optional[float] = Field(0.23, gt=0, lt=1, description="Logo size as a fraction of QR code size (0-1)")
-    logo_background: Optional[bool] = True
-    logo_round: Optional[bool] = True
-
-    @validator('pattern_style', 'eye_style')
-    def validate_pattern_style(cls, v):
-        valid_patterns = ['square', 'rounded', 'dots', 'gapped', 'vertical', 'horizontal']
-        if v.lower() not in valid_patterns:
-            raise ValueError(f"Invalid pattern style. Must be one of: {', '.join(valid_patterns)}")
-        return v.lower()
-
-    @validator('error_correction')
-    def validate_error_correction(cls, v):
-        valid_levels = ['L', 'M', 'Q', 'H']
-        if v not in valid_levels:
-            raise ValueError(f"Error correction must be one of: {', '.join(valid_levels)}")
-        return v
-
-    @validator('foreground_color', 'background_color', 'eye_color', 'module_color')
-    def validate_color(cls, v):
-        if not re.match(r'^#[0-9A-Fa-f]{6}$', v):
-            raise ValueError("Colors must be in hex format (#RRGGBB)")
-        return v
-
-    class Config:
-        populate_by_name = True
-
+# QR Template for saved designs
 class QRTemplate(BaseModel):
     id: PyObjectId = Field(default_factory=PyObjectId, alias="_id")
     name: str

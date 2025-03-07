@@ -24,7 +24,7 @@ const API_URL = import.meta.env.VITE_API_URL
 
 const analyticsService = new AnalyticsService()
 
-export default function QRCodeAnalytics() {
+export default function VCardAnalytics() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const [timeRange, setTimeRange] = useState('30')
@@ -32,8 +32,8 @@ export default function QRCodeAnalytics() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   
-  // Get real-time updates with QR ID
-  const { metrics: realtimeMetrics, error: realtimeError, isConnected } = useAnalyticsSSE({ qrId: id })
+  // Get real-time updates with VCard ID
+  const { metrics: realtimeMetrics, error: realtimeError, isConnected } = useAnalyticsSSE({ vcardId: id })
 
   // Initialize metrics with default values
   const metrics = {
@@ -51,7 +51,7 @@ export default function QRCodeAnalytics() {
       setLoading(true)
       setError(null)
       console.log('Fetching analytics with timeRange:', timeRange)
-      const data = await analyticsService.getQRCodeAnalytics(id, timeRange)
+      const data = await analyticsService.getVCardAnalytics(id, timeRange)
       console.log('Received analytics data:', data)
       setAnalytics(data)
     } catch (err) {
@@ -131,7 +131,7 @@ export default function QRCodeAnalytics() {
             <ArrowLeft className="mr-2 h-4 w-4" />
             Back
           </Button>
-          <h1 className="text-2xl font-bold">QR Code Analytics</h1>
+          <h1 className="text-2xl font-bold">VCard Analytics</h1>
         </div>
         <div className="flex items-center gap-2">
           {renderConnectionStatus()}
@@ -248,15 +248,18 @@ export default function QRCodeAnalytics() {
                   </div>
                   <div>
                     <p className="text-sm font-medium">
-                      {scan.action_type === 'contact_add' ? 'Contact Added' : 'VCF Downloaded'}
+                      {scan.action_type === 'scan' ? 'Scanned' : 
+                       scan.action_type === 'contact_add' ? 'Contact Added' : 
+                       scan.action_type === 'vcf_download' ? 'VCF Downloaded' : 
+                       'Viewed'}
                     </p>
-                    <p className="text-sm text-muted-foreground">
-                      {scan.device_info?.browser || 'Unknown browser'} on {scan.device_info?.os || 'Unknown OS'}
+                    <p className="text-xs text-muted-foreground">
+                      {new Date(scan.timestamp).toLocaleString()}
                     </p>
                   </div>
                 </div>
                 <div className="text-sm text-muted-foreground">
-                  {format(new Date(scan.timestamp), 'MMM dd, yyyy, hh:mm a')}
+                  {scan.device_info?.browser} on {scan.device_info?.os}
                 </div>
               </CardContent>
             </Card>

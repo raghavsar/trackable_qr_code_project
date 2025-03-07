@@ -22,8 +22,13 @@ export interface QRCodeResponse {
     updated_at: string;
     total_scans: number;
     type: string;
-    vcard_id: string;
+    vcard_id?: string;  // Make this optional since it might be in metadata
     design?: QRDesignOptions;
+    metadata?: {
+        vcard_id?: string;
+        vcard_name?: string;
+        [key: string]: any;
+    };
 }
 
 export interface AnalyticsResponse {

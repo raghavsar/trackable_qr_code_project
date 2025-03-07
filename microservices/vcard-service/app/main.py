@@ -5,6 +5,7 @@ from datetime import datetime
 from typing import List
 import os
 import logging
+import httpx
 
 from shared.models import VCardData, PyObjectId
 from .database import get_database
@@ -73,6 +74,15 @@ async def create_vcard(
         vcard_dict["created_at"] = datetime.utcnow()
         vcard_dict["updated_at"] = vcard_dict["created_at"]
         
+        # Initialize QR code and analytics fields
+        vcard_dict["qr_code"] = None  # Will be populated by QR service
+        vcard_dict["analytics"] = {
+            "total_scans": 0,
+            "scans": [],
+            "scans_by_date": {},
+            "scans_by_device": {}
+        }
+        
         # Validate required fields
         if not vcard_dict.get("first_name") or not vcard_dict.get("last_name"):
             raise HTTPException(
@@ -91,9 +101,40 @@ async def create_vcard(
             
         logger.info(f"Successfully created VCard with ID: {result.inserted_id}")
         
-        # Convert ObjectId to string for _id field
-        created_vcard["_id"] = str(created_vcard["_id"])
-        return created_vcard
+        # Generate QR code for the newly created VCard
+        try:
+            # Get QR service URL from environment
+            qr_service_url = os.getenv("QR_SERVICE_URL", "http://qr-service:8000")
+            
+            # Prepare request to QR service
+            qr_request_url = f"{qr_service_url}/qr/generate/{str(result.inserted_id)}"
+            
+            # Forward the user's token for authentication
+            headers = {"Authorization": f"Bearer {current_user.get('token', '')}"}
+            
+            # Make async request to QR service
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                qr_response = await client.post(qr_request_url, headers=headers)
+                
+                if qr_response.status_code == 200:
+                    qr_data = qr_response.json()
+                    logger.info(f"QR code generated successfully: {qr_data.get('qr_code_url')}")
+                else:
+                    logger.warning(f"Failed to generate QR code: {qr_response.text}")
+        except Exception as qr_error:
+            # Log error but don't fail the VCard creation
+            logger.error(f"Error generating QR code: {str(qr_error)}")
+        
+        # Get the updated VCard with QR code info
+        updated_vcard = await db.vcards.find_one({"_id": result.inserted_id})
+        if updated_vcard:
+            # Convert ObjectId to string for _id field
+            updated_vcard["_id"] = str(updated_vcard["_id"])
+            return updated_vcard
+        else:
+            # If we can't get the updated VCard, return the original one
+            created_vcard["_id"] = str(created_vcard["_id"])
+            return created_vcard
         
     except Exception as e:
         logger.error(f"Error creating VCard: {str(e)}")

@@ -82,7 +82,22 @@ const QRCodeList = React.forwardRef<{ refreshList: () => void }, QRCodeListProps
     try {
       setError(null)
       const codes = await qrService.listQRCodes()
-      setQrCodes(codes)
+      
+      // Transform the data to ensure vcard_id is available at the root level
+      const transformedCodes = codes.map(code => ({
+        ...code,
+        // Use root level vcard_id if it exists, otherwise try to get it from metadata
+        vcard_id: code.vcard_id || (code.metadata && code.metadata.vcard_id)
+      }))
+      
+      setQrCodes(transformedCodes)
+      
+      // Debug log for VCard IDs
+      console.log('QR Codes with VCard IDs:', transformedCodes.map(code => ({
+        id: code.id,
+        vcard_id: code.vcard_id,
+        has_valid_vcard_id: !!code.vcard_id && /^[0-9a-fA-F]{24}$/.test(code.vcard_id)
+      })))
     } catch (error) {
       console.error('Failed to fetch QR codes:', error)
       setError('Failed to load QR codes. Please try again later.')
@@ -144,13 +159,21 @@ const QRCodeList = React.forwardRef<{ refreshList: () => void }, QRCodeListProps
   }
 
   const handleViewAnalytics = (qrCode: QRCode) => {
-    console.log('QR Code data:', qrCode);
-    if (qrCode.id) {
-      navigate(`/analytics/qr/${qrCode.id}`);
-    } else {
-      console.error('Missing QR code ID:', qrCode);
-      toast.error('Analytics not available for this QR code');
+    console.log('QR Code data for analytics:', qrCode);
+    
+    // Get vcard_id from either the root level or metadata
+    const vcardId = qrCode.vcard_id || (qrCode.metadata && qrCode.metadata.vcard_id);
+    
+    // Check if vcard_id exists
+    if (!vcardId) {
+      console.error('Missing VCard ID in QR code data:', qrCode);
+      toast.error('Analytics not available: Missing VCard ID');
+      return;
     }
+    
+    // Navigate to analytics page with the vcard_id
+    console.log('Navigating to analytics for VCard ID:', vcardId);
+    navigate(`/analytics/vcard/${vcardId}`);
   }
 
   const filteredAndSortedQRCodes = React.useMemo(() => {
@@ -306,7 +329,14 @@ const QRCodeList = React.forwardRef<{ refreshList: () => void }, QRCodeListProps
                     </Button>
                   )}
                   {showAnalytics && (
-                    <Button variant="outline" size="sm" onClick={() => handleViewAnalytics(qr)}>
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      onClick={() => handleViewAnalytics(qr)}
+                      disabled={!(qr.vcard_id || (qr.metadata && qr.metadata.vcard_id))}
+                      title={!(qr.vcard_id || (qr.metadata && qr.metadata.vcard_id)) ? 
+                        "Analytics not available: Missing VCard ID" : "View analytics"}
+                    >
                       <BarChart2 className="h-4 w-4" />
                     </Button>
                   )}

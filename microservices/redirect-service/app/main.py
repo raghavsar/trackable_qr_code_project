@@ -166,8 +166,15 @@ async def redirect_to_vcard(
             raise HTTPException(status_code=500, detail="Server configuration error")
         base_url = base_url.rstrip('/')
         
-        # Get VCard
-        vcard = await db.vcards.find_one({"_id": PyObjectId(vcard_id)})
+        # Try to get VCard by ID as ObjectId first
+        vcard = None
+        try:
+            vcard = await db.vcards.find_one({"_id": PyObjectId(vcard_id)})
+        except:
+            # If conversion to ObjectId fails, try as string
+            logger.info(f"Trying to find VCard with string ID: {vcard_id}")
+            vcard = await db.vcards.find_one({"_id": vcard_id})
+            
         if not vcard:
             logger.error(f"VCard not found: {vcard_id}")
             raise HTTPException(status_code=404, detail="VCard not found")

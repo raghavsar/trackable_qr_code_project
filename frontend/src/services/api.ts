@@ -162,35 +162,33 @@ export class AnalyticsService {
 
   async getQRCodeAnalytics(qrCodeId: string, timeRange: string = '30'): Promise<AnalyticsData> {
     try {
-      console.log('📊 Fetching QR analytics:', {
-        qrCodeId,
+      console.log('📊 Fetching VCard analytics:', {
+        vcardId: qrCodeId,
         timeRange,
-        url: `/analytics/qr/${qrCodeId}?timeRange=${timeRange}d`
+        url: `/analytics/vcard/${qrCodeId}?timeRange=${timeRange}d`
       });
 
       const token = localStorage.getItem('token');
       console.log('🔑 Auth token present:', !!token);
 
-      const response = await axiosInstance.get(`/analytics/qr/${qrCodeId}?timeRange=${timeRange}d`);
-      console.log('📊 QR Analytics response:', response.data);
+      const response = await axiosInstance.get(`/analytics/vcard/${qrCodeId}?timeRange=${timeRange}d`);
+      console.log('📊 VCard Analytics response:', response.data);
       return response.data;
     } catch (error) {
-      console.error('❌ Error fetching QR analytics:', error);
+      console.error('❌ Error fetching VCard analytics:', error);
       if (axios.isAxiosError(error)) {
         console.error('Full error details:', {
           response: error.response?.data,
           status: error.response?.status,
-          headers: error.response?.headers,
-          config: {
-            url: error.config?.url,
-            method: error.config?.method,
-            baseURL: error.config?.baseURL,
-            headers: error.config?.headers
-          }
+          headers: error.response?.headers
         });
       }
       throw error;
     }
+  }
+
+  async getVCardAnalytics(vcardId: string, timeRange: string = '30'): Promise<AnalyticsData> {
+    return this.getQRCodeAnalytics(vcardId, timeRange);
   }
 }
 
