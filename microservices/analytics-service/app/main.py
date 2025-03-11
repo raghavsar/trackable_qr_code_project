@@ -45,7 +45,12 @@ app = FastAPI(title="Analytics Service")
 # Configure CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # For development - replace with specific origins in production
+    allow_origins=[
+        "*",  # For development
+        # Add your production domains here when ready
+        # "https://app.yourdomain.com",
+        # "https://api.yourdomain.com"
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -336,7 +341,7 @@ async def get_real_time_metrics(db: Any) -> Dict[str, Any]:
             "recent_scans": formatted_recent_scans,
             "timestamp": datetime.utcnow().isoformat()
         }
-        
+            
         return metrics
     except Exception as e:
         logger.error(f"Error getting real-time metrics: {e}")
@@ -409,7 +414,6 @@ async def stream_metrics(
                 
                 # Wait before next update
                 await asyncio.sleep(5)
-                
         except Exception as e:
             logger.error(f"Error in SSE stream for client {client_id}: {e}")
             logger.error(traceback.format_exc())
@@ -506,7 +510,6 @@ async def stream_vcard_metrics_alt(
                 
                 # Wait before next update
                 await asyncio.sleep(5)
-                
         except Exception as e:
             logger.error(f"Error in VCard SSE stream for client {client_id}: {e}")
             logger.error(traceback.format_exc())
