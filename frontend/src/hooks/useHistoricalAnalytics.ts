@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import type { DailyMetric } from '@/types/analytics';
 
+const API_URL = import.meta.env.VITE_API_URL;
+
 interface UseHistoricalAnalyticsProps {
   startDate: string;
   endDate: string;
@@ -18,12 +20,12 @@ export const useHistoricalAnalytics = ({ startDate, endDate }: UseHistoricalAnal
   const fetchWithRetry = useCallback(async (retryCount = 0): Promise<DailyMetric[]> => {
     try {
       const response = await fetch(
-        `/api/v1/analytics/metrics/daily?start_date=${startDate}&end_date=${endDate}`,
+        `${API_URL}/api/v1/analytics/metrics/daily?start_date=${startDate}&end_date=${endDate}`,
         {
           headers: {
             'Accept': 'application/json',
-          },
-          credentials: 'include'
+            'Authorization': `Bearer ${localStorage.getItem('token')}`
+          }
         }
       );
 

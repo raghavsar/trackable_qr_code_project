@@ -493,6 +493,11 @@ async def delete_qr_code(qr_id: str, request: Request, user_id: str = Depends(ve
 async def get_vcard_analytics(vcard_id: str, request: Request, user_id: str = Depends(verify_token)):
     return await forward_request(request, settings.ANALYTICS_SERVICE_URL, f"/api/v1/analytics/vcard/{vcard_id}", user_id)
 
+@app.get("/api/v1/analytics/metrics/daily")
+async def get_daily_metrics(request: Request, user_id: str = Depends(verify_token)):
+    """Get daily analytics metrics for a date range."""
+    return await forward_request(request, settings.ANALYTICS_SERVICE_URL, "/api/v1/analytics/metrics/daily", user_id)
+
 @app.get("/api/v1/analytics/qr/{qr_id}")
 async def get_qr_analytics(qr_id: str, request: Request, user_id: str = Depends(verify_token)):
     return await forward_request(request, settings.ANALYTICS_SERVICE_URL, f"/api/v1/analytics/qr/{qr_id}", user_id)
@@ -558,10 +563,34 @@ async def analytics_stream(request: Request):
 async def qr_analytics_stream(
     qr_id: str,
     request: Request,
-    access_token: str
+    access_token: str = None
 ):
     """Stream real-time analytics metrics for a specific QR code."""
     try:
+        logger.info(f"SSE request received for QR {qr_id}")
+        logger.info(f"Request headers: {dict(request.headers)}")
+        logger.info(f"Query params: {dict(request.query_params)}")
+        
+        # Get token from query param or header
+        if not access_token:
+            auth_header = request.headers.get("Authorization")
+            if auth_header and auth_header.startswith("Bearer "):
+                access_token = auth_header.replace("Bearer ", "")
+                logger.info("Token extracted from Authorization header")
+            else:
+                # Try to get from query params
+                access_token = request.query_params.get("access_token")
+                if access_token:
+                    logger.info("Token extracted from query parameters")
+                else:
+                    logger.warning("No token found in Authorization header or query parameters")
+                    raise HTTPException(
+                        status_code=status.HTTP_401_UNAUTHORIZED,
+                        detail="Authentication token is required"
+                    )
+        else:
+            logger.info("Token provided as function parameter")
+        
         # Verify the token
         try:
             payload = jwt.decode(
@@ -571,11 +600,14 @@ async def qr_analytics_stream(
             )
             user_id = payload.get("sub")
             if not user_id:
+                logger.error("Invalid token payload: missing 'sub' field")
                 raise HTTPException(
                     status_code=status.HTTP_401_UNAUTHORIZED,
                     detail="Invalid authentication token"
                 )
-        except jwt.JWTError:
+            logger.info(f"Token verified successfully for user {user_id}")
+        except jwt.JWTError as e:
+            logger.error(f"JWT verification error: {str(e)}")
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid authentication token"
@@ -583,6 +615,7 @@ async def qr_analytics_stream(
 
         # Forward the SSE request to analytics service
         analytics_url = f"{settings.ANALYTICS_SERVICE_URL}/api/v1/analytics/qr/{qr_id}/stream"
+        logger.info(f"Forwarding SSE request to: {analytics_url}")
         
         # Create client session with proper headers
         async with httpx.AsyncClient() as client:
@@ -597,6 +630,8 @@ async def qr_analytics_stream(
                 timeout=None  # No timeout for SSE
             )
             
+            logger.info(f"Analytics service response status: {response.status_code}")
+            
             return StreamingResponse(
                 response.aiter_bytes(),
                 media_type="text/event-stream",
@@ -609,12 +644,107 @@ async def qr_analytics_stream(
                 }
             )
     except HTTPException as e:
+        logger.error(f"HTTP exception in qr_analytics_stream: {str(e)}")
         raise e
     except Exception as e:
         logger.error(f"Error streaming QR analytics: {str(e)}")
         raise HTTPException(
             status_code=500,
             detail=f"Error streaming QR analytics: {str(e)}"
+        )
+
+@app.get("/api/v1/analytics/vcard/{vcard_id}/stream")
+async def vcard_analytics_stream(
+    vcard_id: str,
+    request: Request,
+    access_token: str = None
+):
+    """Stream real-time analytics metrics for a specific VCard."""
+    try:
+        logger.info(f"SSE request received for VCard {vcard_id}")
+        logger.info(f"Request headers: {dict(request.headers)}")
+        logger.info(f"Query params: {dict(request.query_params)}")
+        
+        # Get token from query param or header
+        if not access_token:
+            auth_header = request.headers.get("Authorization")
+            if auth_header and auth_header.startswith("Bearer "):
+                access_token = auth_header.replace("Bearer ", "")
+                logger.info("Token extracted from Authorization header")
+            else:
+                # Try to get from query params
+                access_token = request.query_params.get("access_token")
+                if access_token:
+                    logger.info("Token extracted from query parameters")
+                else:
+                    logger.warning("No token found in Authorization header or query parameters")
+                    raise HTTPException(
+                        status_code=status.HTTP_401_UNAUTHORIZED,
+                        detail="Authentication token is required"
+                    )
+        else:
+            logger.info("Token provided as function parameter")
+        
+        # Verify the token
+        try:
+            payload = jwt.decode(
+                access_token,
+                settings.JWT_SECRET,
+                algorithms=[settings.JWT_ALGORITHM]
+            )
+            user_id = payload.get("sub")
+            if not user_id:
+                logger.error("Invalid token payload: missing 'sub' field")
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Invalid authentication token"
+                )
+            logger.info(f"Token verified successfully for user {user_id}")
+        except jwt.JWTError as e:
+            logger.error(f"JWT verification error: {str(e)}")
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid authentication token"
+            )
+
+        # Forward the SSE request to analytics service
+        analytics_url = f"{settings.ANALYTICS_SERVICE_URL}/api/v1/analytics/vcard/{vcard_id}/stream"
+        logger.info(f"Forwarding SSE request to: {analytics_url}")
+        
+        # Create client session with proper headers
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                analytics_url,
+                headers={
+                    'Accept': 'text/event-stream',
+                    'Cache-Control': 'no-cache',
+                    'Connection': 'keep-alive',
+                    'Authorization': f'Bearer {access_token}'
+                },
+                timeout=None  # No timeout for SSE
+            )
+            
+            logger.info(f"Analytics service response status: {response.status_code}")
+            
+            return StreamingResponse(
+                response.aiter_bytes(),
+                media_type="text/event-stream",
+                headers={
+                    'Cache-Control': 'no-cache',
+                    'Connection': 'keep-alive',
+                    'Content-Type': 'text/event-stream',
+                    'X-Accel-Buffering': 'no',
+                    'Access-Control-Allow-Origin': '*'
+                }
+            )
+    except HTTPException as e:
+        logger.error(f"HTTP exception in vcard_analytics_stream: {str(e)}")
+        raise e
+    except Exception as e:
+        logger.error(f"Error streaming VCard analytics: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error streaming VCard analytics: {str(e)}"
         )
 
 @app.get("/api/v1/health")

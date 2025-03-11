@@ -9,6 +9,9 @@ from user_agents import parse
 import vobject
 from datetime import datetime
 import logging
+import traceback
+import json
+import uuid
 
 from shared.models import PyObjectId
 from .database import get_database
@@ -126,24 +129,53 @@ def get_platform_specific_url(vcard_data: dict, device_info: dict) -> str:
     logger.info("Using web fallback with VCF download")
     return f"{base_url}/r/{vcard_data['_id']}?format=vcf"
 
-async def notify_analytics(vcard_id: str, request: Request, device_info: dict, action_type: str):
-    """Notify analytics service about the scan with enhanced device info"""
+async def notify_analytics(vcard_id: str, request: Request, device_info: dict, action_type: str, db = None):
+    """Notify analytics service about the scan with enhanced device info and error handling"""
     analytics_url = f"{os.getenv('ANALYTICS_SERVICE_URL')}/api/v1/analytics/scan"
+    event_id = str(uuid.uuid4())
+    
     try:
-        await app.http_client.post(
+        # Create the event data
+        event_data = {
+            "event_id": event_id,
+            "vcard_id": vcard_id,
+            "timestamp": datetime.utcnow().isoformat(),
+            "device_info": device_info,
+            "action_type": action_type,
+            "success": True,
+            "ip_address": request.client.host if request.client else None,
+            "referrer": request.headers.get("referer", None),
+            "user_agent": request.headers.get("user-agent", None)
+        }
+        
+        logger.info(f"Sending analytics event {event_id} for VCard {vcard_id}, action: {action_type}")
+        
+        # Store event in local database for reliability
+        if db:
+            try:
+                await db.scan_events.insert_one(event_data)
+                logger.info(f"Event {event_id} stored in local database")
+            except Exception as e:
+                logger.error(f"Failed to store event in local database: {e}")
+        
+        # Send to analytics service
+        response = await app.http_client.post(
             analytics_url,
-            json={
-                "vcard_id": vcard_id,
-                "timestamp": datetime.utcnow().isoformat(),
-                "device_info": device_info,
-                "action_type": action_type,
-                "success": True,
-                "ip_address": request.client.host if request.client else None,
-                "headers": dict(request.headers)
-            }
+            json=event_data,
+            timeout=5.0  # Add timeout to prevent hanging
         )
+        
+        if response.status_code == 200:
+            logger.info(f"Analytics service acknowledged event {event_id}: {response.status_code}")
+        else:
+            logger.error(f"Analytics service returned error for event {event_id}: {response.status_code} {response.text}")
+            
+        return response.status_code == 200
+        
     except Exception as e:
-        logger.error(f"Error notifying analytics: {e}")
+        logger.error(f"Error notifying analytics for event {event_id}: {e}")
+        logger.error(traceback.format_exc())
+        return False
 
 @app.get("/r/{vcard_id}")
 async def redirect_to_vcard(
@@ -151,13 +183,19 @@ async def redirect_to_vcard(
     request: Request,
     background_tasks: BackgroundTasks,
     format: str = None,
+    action: str = "scan",  # Default action is scan, but can be overridden
     db = Depends(get_database)
 ):
+    """Redirect to VCard page and record scan event with enhanced tracking"""
     try:
-        logger.info("\n=== Starting VCard Redirect ===")
+        request_id = str(uuid.uuid4())
+        logger.info(f"\n=== Starting VCard Redirect {request_id} ===")
         logger.info(f"VCard ID: {vcard_id}")
         logger.info(f"Format requested: {format}")
+        logger.info(f"Action requested: {action}")
         logger.info(f"User Agent: {request.headers.get('user-agent')}")
+        logger.info(f"Referrer: {request.headers.get('referer')}")
+        logger.info(f"Client IP: {request.client.host if request.client else 'unknown'}")
         
         # Get base URL with validation
         base_url = os.getenv('FRONTEND_URL')
@@ -186,29 +224,32 @@ async def redirect_to_vcard(
         device_info = get_device_info(user_agent)
         logger.info(f"Detected device info: {device_info}")
         
-        # Notify analytics about the scan
-        background_tasks.add_task(
-            notify_analytics,
-            vcard_id,
-            request,
-            device_info,
-            "scan"
-        )
-
+        # Validate action type
+        valid_actions = ["scan", "vcf_download", "contact_add", "page_view"]
+        if action not in valid_actions:
+            logger.warning(f"Invalid action type: {action}, defaulting to 'scan'")
+            action = "scan"
+        
+        # Record the initial scan event
+        # We'll do this synchronously to ensure it's recorded before proceeding
+        await notify_analytics(vcard_id, request, device_info, action, db)
+        
         # For mobile devices or explicit VCF request, serve the VCF file directly
         if device_info["is_mobile"] or format == "vcf":
             logger.info("Serving VCard file directly")
             vcf_content = generate_vcard(vcard)
             filename = f"{vcard['first_name']}_{vcard['last_name']}.vcf"
             
-            # Notify analytics
-            background_tasks.add_task(
-                notify_analytics,
-                vcard_id,
-                request,
-                device_info,
-                "vcf_download"
-            )
+            # If the action wasn't already vcf_download, record it now
+            if action != "vcf_download":
+                background_tasks.add_task(
+                    notify_analytics,
+                    vcard_id,
+                    request,
+                    device_info,
+                    "vcf_download",
+                    db
+                )
             
             return Response(
                 content=vcf_content,
@@ -231,4 +272,5 @@ async def redirect_to_vcard(
         
     except Exception as e:
         logger.error(f"Error in redirect: {str(e)}")
+        logger.error(traceback.format_exc())
         raise HTTPException(status_code=500, detail=str(e))

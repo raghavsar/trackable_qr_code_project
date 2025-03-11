@@ -10,6 +10,12 @@ export interface ScanEvent {
   action_type: 'scan' | 'contact_add' | 'vcf_download' | 'page_view'
 }
 
+export interface InteractionBreakdown {
+  direct_scans: number
+  vcf_downloads: number
+  contact_adds: number
+}
+
 export interface AnalyticsMetrics {
   total_scans: number
   contact_adds: number
@@ -17,6 +23,14 @@ export interface AnalyticsMetrics {
   mobile_scans: number
   desktop_scans: number
   recent_scans: ScanEvent[]
+  recent_total?: number
+  recent_contact_adds?: number
+  recent_vcf_downloads?: number
+  timestamp?: string
+  vcard_id?: string
+  interaction_breakdown?: InteractionBreakdown
+  hourly_distribution?: Record<string, number>
+  daily_distribution?: Record<string, number>
 }
 
 export interface HistoricalMetrics {
@@ -44,6 +58,7 @@ export interface ScanHistoryEntry {
 
 export interface AnalyticsData {
   qr_id: string;
+  vcard_id?: string;
   timeRange: string;
   total_scans: number;
   contact_adds: number;
@@ -52,6 +67,10 @@ export interface AnalyticsData {
   desktop_scans: number;
   scan_history: ScanHistoryEntry[];
   recent_scans: ScanEvent[];
+  interaction_breakdown?: InteractionBreakdown;
+  hourly_distribution?: Record<string, number>;
+  daily_distribution?: Record<string, number>;
+  timestamp?: string;
 }
 
 export interface ScanEntry {
