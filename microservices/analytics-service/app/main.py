@@ -292,8 +292,7 @@ async def startup_db_client() -> None:
     logger.info("Connected to MongoDB")
 
 @app.on_event("shutdown")
-async def shutdown_db_client() -> None:
-    """Close database connection on shutdown"""
+async def shutdown_db_client():
     logger.info("Shutting down analytics service")
     if hasattr(app, "mongodb_client"):
         app.mongodb_client.close()
@@ -370,59 +369,39 @@ async def stream_metrics(
         try:
             # Get initial metrics
             metrics = await get_real_time_metrics(db)
+            logger.info(f"Initial metrics: {metrics}")
             
             # Send initial metrics
             yield {
                 "event": "metrics",
-                "id": str(uuid.uuid4()),
                 "data": json.dumps(metrics)
             }
             
-            # Send connection established event
-            yield {
-                "event": "connection",
-                "id": str(uuid.uuid4()),
-                "data": json.dumps({
-                    "client_id": client_id,
-                    "connected_at": datetime.utcnow().isoformat(),
-                    "status": "connected"
-                })
-            }
-            
-            # Keep connection alive and process updates
+            # Send periodic updates
             while True:
-                if await request.is_disconnected():
-                    logger.info(f"Client disconnected: {client_id}")
-                    break
-                
                 # Get updated metrics
                 metrics = await get_real_time_metrics(db)
+                logger.info(f"Updated metrics: {metrics}")
                 
-                # Send metrics update
+                # Send metrics event
                 yield {
                     "event": "metrics",
-                    "id": str(uuid.uuid4()),
                     "data": json.dumps(metrics)
-                }
-                
-                # Send heartbeat
-                yield {
-                    "event": "heartbeat",
-                    "id": str(uuid.uuid4()),
-                    "data": json.dumps({"timestamp": datetime.utcnow().isoformat()})
                 }
                 
                 # Wait before next update
                 await asyncio.sleep(5)
+                
         except Exception as e:
-            logger.error(f"Error in SSE stream for client {client_id}: {e}")
+            logger.error(f"Error in event generator: {e}")
             logger.error(traceback.format_exc())
             
             # Send error event
             yield {
                 "event": "error",
-                "id": str(uuid.uuid4()),
-                "data": json.dumps({"error": str(e), "timestamp": datetime.utcnow().isoformat()})
+                "data": json.dumps({
+                    "error": str(e)
+                })
             }
             
     return EventSourceResponse(event_generator())
@@ -438,24 +417,24 @@ async def stream_vcard_metrics_alt(
     logger.info(f"New VCard SSE connection: {client_id} for VCard {vcard_id}")
     
     # Validate VCard exists
-    vcard = None
     try:
         # Try as ObjectId first
         vcard = await db.vcards.find_one({"_id": PyObjectId(vcard_id)})
     except:
-        # If that fails, try as string
+        # Try as string if ObjectId fails
         vcard = await db.vcards.find_one({"_id": vcard_id})
-        
+            
     if not vcard:
         logger.error(f"VCard not found for SSE stream: {vcard_id}")
         # Return error response
         async def error_generator():
             yield {
                 "event": "error",
-                "id": str(uuid.uuid4()),
-                "data": json.dumps({"error": f"VCard not found: {vcard_id}"})
+                "data": json.dumps({
+                    "error": "VCard not found"
+                })
             }
-        return EventSourceResponse(error_generator())
+        return error_generator()
     
     async def event_generator():
         try:
@@ -466,50 +445,24 @@ async def stream_vcard_metrics_alt(
             # Send initial metrics
             yield {
                 "event": "metrics",
-                "id": str(uuid.uuid4()),
                 "data": json.dumps(metrics)
             }
             
-            # Send connection established event
-            yield {
-                "event": "connection",
-                "id": str(uuid.uuid4()),
-                "data": json.dumps({
-                    "client_id": client_id,
-                    "vcard_id": vcard_id,
-                    "connected_at": datetime.utcnow().isoformat(),
-                    "status": "connected"
-                })
-            }
-            
-            # Keep connection alive and process updates
+            # Send periodic updates
             while True:
-                if await request.is_disconnected():
-                    logger.info(f"VCard client disconnected: {client_id} for {vcard_id}")
-                    break
-                
                 # Get updated metrics
                 metrics = await get_vcard_real_time_metrics(db, vcard_id)
+                logger.info(f"Updated metrics for VCard {vcard_id}: {metrics}")
                 
-                # Send metrics update
+                # Send metrics event
                 yield {
                     "event": "metrics",
-                    "id": str(uuid.uuid4()),
                     "data": json.dumps(metrics)
-                }
-                
-                # Send heartbeat
-                yield {
-                    "event": "heartbeat",
-                    "id": str(uuid.uuid4()),
-                    "data": json.dumps({
-                        "timestamp": datetime.utcnow().isoformat(),
-                        "vcard_id": vcard_id
-                    })
                 }
                 
                 # Wait before next update
                 await asyncio.sleep(5)
+                
         except Exception as e:
             logger.error(f"Error in VCard SSE stream for client {client_id}: {e}")
             logger.error(traceback.format_exc())
@@ -517,10 +470,11 @@ async def stream_vcard_metrics_alt(
             # Send error event
             yield {
                 "event": "error",
-                "id": str(uuid.uuid4()),
-                "data": json.dumps({"error": str(e), "timestamp": datetime.utcnow().isoformat()})
+                "data": json.dumps({
+                    "error": str(e)
+                })
             }
-            
+
     return EventSourceResponse(
         event_generator(),
         media_type="text/event-stream",
