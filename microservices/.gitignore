@@ -24,6 +24,8 @@ wheels/
 venv/
 env/
 ENV/
+.env/
+.venv/
 
 # IDE
 .idea/
@@ -31,29 +33,74 @@ ENV/
 *.swp
 *.swo
 .DS_Store
+*.sublime-workspace
+*.sublime-project
 
 # Environment Variables
 .env
 .env.*
+!.env.example
 
 # Logs
 *.log
 logs/
+log/
 
 # Test Coverage
 .coverage
 htmlcov/
 coverage.xml
+.pytest_cache/
+.tox/
+.nox/
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
 
 # Docker
 .docker/
+docker-compose.override.yml
 
 # MongoDB
 data/
+mongodb_data/
+*.mongodb
 
 # Redis
 dump.rdb
+*.rdb
 
 # Kafka
 kafka-logs/
-zookeeper-data/ 
+zookeeper-data/
+
+# MinIO
+minio_data/
+minio/
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*.swp
+*~
+
+# System Files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE specific files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Local development
+*.local
+local_settings.py 
