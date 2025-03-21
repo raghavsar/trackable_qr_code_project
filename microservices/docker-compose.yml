@@ -82,7 +82,7 @@ services:
       - ANALYTICS_SERVICE_URL=http://analytics-service:8004
       - REDIRECT_SERVICE_URL=http://redirect-service:8005
       - PORT=8000
-      - FRONTEND_URL=${FRONTEND_URL}
+      - FRONTEND_URL=http://192.168.7.154:5173
 
   user-service:
     build:
@@ -145,7 +145,7 @@ services:
       - JWT_ALGORITHM=HS256
       - JWT_EXPIRATION=3600
       - ANALYTICS_SERVICE_URL=http://analytics-service:8004
-      - FRONTEND_URL=${FRONTEND_URL}
+      - FRONTEND_URL=http://192.168.7.154:5173
       - MINIO_ENDPOINT=minio:9000
       - MINIO_PUBLIC_ENDPOINT=http://192.168.7.154:9000
       - MINIO_ACCESS_KEY=qr_service_user
@@ -199,7 +199,7 @@ services:
       - JWT_SECRET=e0a345b2f4c8767d5dcaf4cd3c58526369fca63d6f40cb64350420c22f697581f68b048343720d3ecb16cceae9539ac9377ce356586dae83b09177f0c6514391
       - JWT_ALGORITHM=HS256
       - JWT_EXPIRATION=3600
-      - FRONTEND_URL=${FRONTEND_URL}
+      - FRONTEND_URL=http://192.168.7.154:5173
       - ANALYTICS_SERVICE_URL=http://analytics-service:8004
 
 networks:

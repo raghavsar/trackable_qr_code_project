@@ -64,15 +64,19 @@ def generate_vcard(vcard_data: dict) -> bytes:
         f"FN:{vcard_data['first_name']} {vcard_data['last_name']}"
     ]
     
-    # Add phone numbers with simplified typing
-    if vcard_data.get('mobile_number'):
-        vcard_lines.append(f"TEL;CELL:{vcard_data['mobile_number']}")
-    if vcard_data.get('work_number'):
-        vcard_lines.append(f"TEL;WORK:{vcard_data['work_number']}")
+    # Add profile photo if exists
+    if vcard_data.get('profile_picture'):
+        vcard_lines.append(f"PHOTO;VALUE=URI:{vcard_data['profile_picture']}")
     
-    # Add email with simplified typing
+    # Add phone numbers with proper TYPE parameters
+    if vcard_data.get('mobile_number'):
+        vcard_lines.append(f"TEL;TYPE=CELL,VOICE:{vcard_data['mobile_number']}")
+    if vcard_data.get('work_number'):
+        vcard_lines.append(f"TEL;TYPE=WORK,VOICE:{vcard_data['work_number']}")
+    
+    # Add email with proper TYPE parameter - just "TYPE=WORK" to display as "Email"
     if vcard_data.get('email'):
-        vcard_lines.append(f"EMAIL:{vcard_data['email']}")
+        vcard_lines.append(f"EMAIL;TYPE=WORK:{vcard_data['email']}")
     
     # Add organization and title
     if vcard_data.get('company'):
@@ -80,25 +84,59 @@ def generate_vcard(vcard_data: dict) -> bytes:
     if vcard_data.get('title'):
         vcard_lines.append(f"TITLE:{vcard_data['title']}")
     
-    # Add website
+    # Add website as primary URL (only if provided)
     if vcard_data.get('website'):
         vcard_lines.append(f"URL:{vcard_data['website']}")
     
-    # Add address if available
+    # Add home address from user's form data if available
     if vcard_data.get('address'):
         addr = vcard_data['address']
-        adr_parts = [
-            "",  # Post office box
-            "",  # Extended address
-            addr.get('street', ''),
-            addr.get('city', ''),
-            addr.get('state', ''),
-            addr.get('zip_code', ''),
-            addr.get('country', '')
-        ]
-        vcard_lines.append(f"ADR:{';'.join(adr_parts)}")
+        
+        # Get home address components
+        street = addr.get('street', '')
+        city = addr.get('city', '')
+        state = addr.get('state', '')
+        zip_code = addr.get('zip_code', '')
+        country = addr.get('country', '')
+        
+        # Only add if any address component exists
+        if any([street, city, state, zip_code, country]):
+            # Create ADR property with HOME type
+            adr_parts = [
+                "",  # Post office box
+                "",  # Extended address
+                street,
+                city,
+                state,
+                zip_code,
+                country
+            ]
+            vcard_lines.append(f"ADR;TYPE=HOME:{';'.join(adr_parts)}")
+            
+            # Add formatted home address label
+            formatted_address = ", ".join(filter(None, [street, city, state, zip_code, country]))
+            vcard_lines.append(f"LABEL;TYPE=HOME:{formatted_address}")
+    
+    # Add work address with fixed Google Maps URL in notes
+    work_address = "106, Blue Diamond Complex, next to Indian Oil Petrol Pump, Fatehgunj, Vadodara, Gujarat 390002"
+    work_map_url = "https://maps.app.goo.gl/99bjahgR1SJdWXbb7"
+    
+    # Add work address
+    vcard_lines.append("ADR;TYPE=WORK:;;106, Blue Diamond Complex;Fatehgunj;Vadodara;390002;Gujarat, India")
+    vcard_lines.append(f"LABEL;TYPE=WORK:{work_address}")
+    
+    # Add notes without map URL
+    notes_content = vcard_data.get('notes', '')
+    if notes_content:
+        # Escape special characters
+        notes = notes_content.replace('\n', '\\n').replace('\r', '')
+        vcard_lines.append(f"NOTE:{notes}")
+    
+    # Add revision timestamp
+    vcard_lines.append(f"REV:{datetime.utcnow().strftime('%Y%m%dT%H%M%SZ')}")
     
     vcard_lines.append("END:VCARD")
+    
     return "\r\n".join(vcard_lines).encode('utf-8')
 
 def get_platform_specific_url(vcard_data: dict, device_info: dict) -> str:

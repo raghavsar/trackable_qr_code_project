@@ -355,50 +355,80 @@ async def download_vcard(
             f"FN:{first_name} {last_name}"
         ]
         
-        # Add optional fields with safe handling
-        if vcard.get('email'):
-            vcf_lines.append(f"EMAIL;TYPE=INTERNET:{str(vcard['email'])}")
+        # Add profile photo with proper type
+        if vcard.get('profile_picture'):
+            vcf_lines.append(f"PHOTO;VALUE=URI:{str(vcard['profile_picture'])}")
         
+        # Add email with work type label (removed INTERNET type)
+        if vcard.get('email'):
+            vcf_lines.append(f"EMAIL;TYPE=WORK:{str(vcard['email'])}")
+        
+        # Add phone numbers with proper types
         if vcard.get('mobile_number'):
-            vcf_lines.append(f"TEL;TYPE=CELL:{str(vcard['mobile_number'])}")
+            vcf_lines.append(f"TEL;TYPE=CELL,VOICE:{str(vcard['mobile_number'])}")
         
         if vcard.get('work_number'):
-            vcf_lines.append(f"TEL;TYPE=WORK:{str(vcard['work_number'])}")
+            vcf_lines.append(f"TEL;TYPE=WORK,VOICE:{str(vcard['work_number'])}")
         
+        # Add company and title
         if vcard.get('company'):
             vcf_lines.append(f"ORG:{str(vcard['company'])}")
         
         if vcard.get('title'):
             vcf_lines.append(f"TITLE:{str(vcard['title'])}")
         
+        # Add website as primary URL (without TYPE=WORK)
         if vcard.get('website'):
             vcf_lines.append(f"URL:{str(vcard['website'])}")
         
-        if vcard.get('profile_picture'):
-            vcf_lines.append(f"PHOTO;VALUE=URI:{str(vcard['profile_picture'])}")
-        
-        # Add address if available with safe handling
+        # Add home address from user form data if available
         if vcard.get('address'):
             addr = vcard['address']
-            adr_parts = [
-                "",  # PO Box
-                "",  # Extended Address
-                "106, Blue Diamond Complex",  # Street
-                "Fatehgunj",  # City
-                "Vadodara",  # State
-                "390002",  # ZIP
-                "Gujarat, India"  # Country
-            ]
-            vcf_lines.append(f"ADR;TYPE=WORK:{';'.join(adr_parts)}")
-            # Add Google Maps URL
-            vcf_lines.append("URL;TYPE=WORK:https://maps.app.goo.gl/R1Gg4zBBcyPJQCE48")
-            # Add formatted address label
-            vcf_lines.append("LABEL;TYPE=WORK:106, Blue Diamond Complex, next to Indian Oil Petrol Pump, Fatehgunj, Vadodara, Gujarat 390002")
+            
+            # Get home address components
+            street = addr.get('street', '')
+            city = addr.get('city', '')
+            state = addr.get('state', '')
+            zip_code = addr.get('zip_code', '')
+            country = addr.get('country', '')
+            
+            # Only add if any address component exists
+            if any([street, city, state, zip_code, country]):
+                # Create home address with proper format
+                home_adr_parts = [
+                    "",  # PO Box
+                    "",  # Extended Address
+                    street,
+                    city,
+                    state,
+                    zip_code,
+                    country
+                ]
+                
+                # Add home address with proper type
+                vcf_lines.append(f"ADR;TYPE=HOME:{';'.join(home_adr_parts)}")
+                
+                # Add formatted address label for home
+                home_formatted = ", ".join(filter(None, [street, city, state, zip_code, country]))
+                if home_formatted:
+                    vcf_lines.append(f"LABEL;TYPE=HOME:{home_formatted}")
         
-        # Add notes if available
-        if vcard.get('notes'):
-            vcf_lines.append(f"NOTE:{str(vcard['notes'])}")
+        # Add work address with physical address and Google Maps URL in notes
+        work_address = "106, Blue Diamond Complex, next to Indian Oil Petrol Pump, Fatehgunj, Vadodara, Gujarat 390002"
+        work_map_url = "https://maps.app.goo.gl/99bjahgR1SJdWXbb7"
         
+        # Add work address
+        vcf_lines.append("ADR;TYPE=WORK:;;106, Blue Diamond Complex;Fatehgunj;Vadodara;390002;Gujarat, India")
+        vcf_lines.append(f"LABEL;TYPE=WORK:{work_address}")
+        
+        # Add notes without map URL
+        notes_content = vcard.get('notes', '')
+        if notes_content:
+            # Escape special characters according to vCard spec
+            notes = str(notes_content).replace('\n', '\\n').replace('\r', '')
+            vcf_lines.append(f"NOTE:{notes}")
+        
+        # Add revision timestamp
         vcf_lines.extend([
             f"REV:{datetime.utcnow().strftime('%Y%m%dT%H%M%SZ')}",
             "END:VCARD"

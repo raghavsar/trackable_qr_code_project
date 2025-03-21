@@ -5,7 +5,7 @@ import type { VCardResponse } from '@/types/api';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Download, Mail, Phone, Building, Globe, MapPin } from 'lucide-react';
+import { Download, Mail, Phone, Building, Globe, MapPin, Home, Briefcase } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 
 export default function VCardRedirect() {
@@ -57,6 +57,67 @@ export default function VCardRedirect() {
     fetchVCard();
   }, [id]);
 
+  // Compute formatted home address from address object
+  const getFormattedHomeAddress = (address: VCardResponse['address']) => {
+    if (!address) return '';
+    
+    const parts = [];
+    if (address.street) parts.push(address.street);
+    if (address.city) parts.push(address.city);
+    if (address.state) parts.push(address.state);
+    if (address.zip_code) parts.push(address.zip_code);
+    if (address.country) parts.push(address.country);
+    
+    return parts.join(', ');
+  };
+  
+  // Fixed work address and Google Maps URL
+  const workGoogleMapsUrl = "https://maps.app.goo.gl/99bjahgR1SJdWXbb7";
+  const workAddress = "106, Blue Diamond Complex, Fatehgunj, Vadodara 390002, Gujarat, India";
+
+  // Function to handle adding contact directly
+  const handleAddContact = async () => {
+    if (isAdding) return; // Prevent multiple clicks
+    setIsAdding(true);
+    try {
+      const apiUrl = import.meta.env.VITE_API_URL;
+      const response = await fetch(`${apiUrl}/api/v1/analytics/contact/add?vcard_id=${id}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          vcard_id: vcard?._id,
+          user_id: vcard?.user_id,
+          timestamp: new Date().toISOString(),
+          device_info: {
+            is_mobile: /Mobi|Android/i.test(navigator.userAgent),
+            device: navigator.platform,
+            os: navigator.platform,
+            browser: navigator.userAgent
+          },
+          action_type: 'contact_add',
+          success: true
+        })
+      });
+      
+      if (response.ok) {
+        toast.success('Contact added successfully!');
+        
+        // Trigger VCF download after tracking is complete
+        await handleDownloadVCF();
+      } else {
+        toast.error('Failed to add contact.');
+      }
+    } catch (error) {
+      console.error('Error adding contact:', error);
+      toast.error('Failed to add contact');
+    } finally {
+      setIsAdding(false); // Reset the state after the request
+    }
+  };
+
+  // Function to handle VCF download
   const handleDownloadVCF = async () => {
     try {
       if (!vcard) return;
@@ -126,24 +187,6 @@ export default function VCardRedirect() {
       console.error('Failed to download VCF:', error);
       toast.error('Failed to download contact');
     }
-  };
-
-  const handleAddContact = async () => {
-    if (isAdding) return; // Prevent multiple clicks
-    setIsAdding(true);
-    const apiUrl = import.meta.env.VITE_API_URL;
-    const response = await fetch(`${apiUrl}/api/v1/analytics/contact/add?vcard_id=${id}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-    });
-    if (response.ok) {
-      toast.success('Contact added successfully!');
-    } else {
-      toast.error('Failed to add contact.');
-    }
-    setIsAdding(false); // Reset the state after the request
   };
 
   if (loading) {
@@ -232,17 +275,32 @@ export default function VCardRedirect() {
               </div>
             )}
 
-            {vcard.address && (
-              <div className="flex items-start space-x-3">
-                <MapPin className="w-6 h-6 text-gray-500 mt-0.5 flex-shrink-0" />
+            {/* Work Address (always show) */}
+            <div className="flex items-start space-x-3">
+              <Briefcase className="w-6 h-6 text-gray-500 mt-0.5 flex-shrink-0" />
+              <div>
+                <span className="text-sm font-medium text-gray-500 block">Work Address</span>
                 <a 
-                  href="https://maps.app.goo.gl/R1Gg4zBBcyPJQCE48" 
+                  href={workGoogleMapsUrl} 
                   target="_blank" 
                   rel="noopener noreferrer" 
                   className="text-blue-600 hover:underline leading-relaxed"
                 >
-                  106, Blue Diamond Complex, next to Indian Oil Petrol Pump, Fatehgunj, Vadodara, Gujarat 390002
+                  {workAddress}
                 </a>
+              </div>
+            </div>
+
+            {/* Home Address (only show if available) */}
+            {vcard.address && Object.values(vcard.address).some(value => value) && (
+              <div className="flex items-start space-x-3">
+                <Home className="w-6 h-6 text-gray-500 mt-0.5 flex-shrink-0" />
+                <div>
+                  <span className="text-sm font-medium text-gray-500 block">Home Address</span>
+                  <span className="text-gray-700">
+                    {getFormattedHomeAddress(vcard.address)}
+                  </span>
+                </div>
               </div>
             )}
           </div>

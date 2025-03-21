@@ -14,6 +14,7 @@ import logging
 import os
 from shared.models import QRDesignOptions
 import base64
+from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
@@ -198,22 +199,22 @@ def generate_vcard_content(vcard_data: dict) -> str:
         except Exception as e:
             logger.error(f"Failed to process profile picture: {str(e)}")
     
-    # Add phone numbers - simplified format for v3.0
+    # Add phone numbers with proper TYPE parameters
     if vcard_data.get('mobile_number'):
         formatted_number = format_phone_number(vcard_data['mobile_number'])
-        vcard_lines.append(f"TEL;CELL:{formatted_number}")
+        vcard_lines.append(f"TEL;TYPE=CELL,VOICE:{formatted_number}")
         logger.info(f"Added mobile number: {formatted_number}")
     if vcard_data.get('work_number'):
         formatted_number = format_phone_number(vcard_data['work_number'])
-        vcard_lines.append(f"TEL;WORK:{formatted_number}")
+        vcard_lines.append(f"TEL;TYPE=WORK,VOICE:{formatted_number}")
         logger.info(f"Added work number: {formatted_number}")
     
-    # Add email - simplified for v3.0
+    # Add email with proper TYPE parameter - just "TYPE=WORK" to make it display as "Email"
     if vcard_data.get('email'):
-        vcard_lines.append(f"EMAIL:{vcard_data['email']}")
+        vcard_lines.append(f"EMAIL;TYPE=WORK:{vcard_data['email']}")
         logger.info(f"Added email: {vcard_data['email']}")
     
-    # Add organization and title - simplified for v3.0
+    # Add organization and title with improved formatting
     if vcard_data.get('company'):
         vcard_lines.append(f"ORG:{vcard_data['company']}")
         logger.info(f"Added company: {vcard_data['company']}")
@@ -221,31 +222,58 @@ def generate_vcard_content(vcard_data: dict) -> str:
         vcard_lines.append(f"TITLE:{vcard_data['title']}")
         logger.info(f"Added title: {vcard_data['title']}")
     
-    # Add website - simplified for v3.0
+    # Add website as primary URL (only if provided)
     if vcard_data.get('website'):
         vcard_lines.append(f"URL:{vcard_data['website']}")
         logger.info(f"Added website: {vcard_data['website']}")
     
-    # Add address - simplified for v3.0
+    # Add home address if available
     if vcard_data.get('address'):
         addr = vcard_data['address']
         if any(addr.get(field) for field in ['street', 'city', 'state', 'zip_code', 'country']):
+            # Format home address components
+            street = addr.get('street', '')
+            city = addr.get('city', '')
+            state = addr.get('state', '')
+            zip_code = addr.get('zip_code', '')
+            country = addr.get('country', '')
+            
+            # Create ADR property with HOME type
             adr_parts = [
                 "",  # Post office box
                 "",  # Extended address
-                addr.get('street', ''),
-                addr.get('city', ''),
-                addr.get('state', ''),
-                addr.get('zip_code', ''),
-                addr.get('country', '')
+                street,
+                city,
+                state,
+                zip_code,
+                country
             ]
-            vcard_lines.append(f"ADR:{';'.join(adr_parts)}")
-            logger.info(f"Added address: {', '.join(filter(None, adr_parts))}")
+            vcard_lines.append(f"ADR;TYPE=HOME:{';'.join(adr_parts)}")
+            
+            # Add formatted home address label
+            formatted_address = ", ".join(filter(None, [street, city, state, zip_code, country]))
+            vcard_lines.append(f"LABEL;TYPE=HOME:{formatted_address}")
+            
+            logger.info(f"Added home address: {formatted_address}")
     
-    # Add user notes only
-    if vcard_data.get('notes'):
-        vcard_lines.append(f"NOTE:{vcard_data['notes']}")
-        logger.info(f"Added user notes: {vcard_data['notes']}")
+    # Add work address with fixed Google Maps URL included in the ADR field
+    work_address = "106, Blue Diamond Complex, next to Indian Oil Petrol Pump, Fatehgunj, Vadodara, Gujarat 390002"
+    work_map_url = "https://maps.app.goo.gl/99bjahgR1SJdWXbb7"
+    
+    # Add work address
+    vcard_lines.append("ADR;TYPE=WORK:;;106, Blue Diamond Complex;Fatehgunj;Vadodara;390002;Gujarat, India")
+    vcard_lines.append(f"LABEL;TYPE=WORK:{work_address}")
+    
+    # Add notes without map URL
+    notes_content = vcard_data.get('notes', '')
+    if notes_content:
+        # Escape special characters
+        notes = notes_content.replace('\n', '\\n').replace('\r', '')
+        vcard_lines.append(f"NOTE:{notes}")
+        logger.info("Added user notes")
+    
+    # Add revision timestamp
+    vcard_lines.append(f"REV:{datetime.utcnow().strftime('%Y%m%dT%H%M%SZ')}")
     
     vcard_lines.append("END:VCARD")
     
@@ -253,6 +281,30 @@ def generate_vcard_content(vcard_data: dict) -> str:
     logger.info("Generated vCard 3.0 content")
     
     return vcard_content
+
+def generate_google_maps_url(street='', city='', state='', zip_code='', country='') -> str:
+    """Generate a Google Maps URL based on address components"""
+    address_parts = []
+    
+    # Add non-empty address parts
+    if street:
+        address_parts.append(street)
+    if city:
+        address_parts.append(city)
+    if state:
+        address_parts.append(state)
+    if zip_code:
+        address_parts.append(zip_code)
+    if country:
+        address_parts.append(country)
+    
+    # If we have address components, generate a Google Maps URL
+    if address_parts:
+        # Join address parts with '+' for URL formatting
+        formatted_address = "+".join([part.replace(' ', '+') for part in address_parts])
+        return f"https://maps.app.goo.gl/?q={formatted_address}"
+    
+    return ""
 
 async def generate_vcard_qr(vcard_data: dict, style_config: QRDesignOptions) -> bytes:
     """Generate QR code with direct vCard data"""

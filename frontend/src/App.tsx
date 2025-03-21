@@ -10,7 +10,7 @@ import "./styles/globals.css"
 import GoogleCallback from "./pages/auth/GoogleCallback"
 import { ProtectedRoute } from "./components/ProtectedRoute"
 import AnalyticsDashboard from "./pages/analytics/Dashboard"
-import VCardAnalytics from "./pages/analytics/VCardAnalytics"
+import VCardAnalytics from "./pages/analytics/QRCodeAnalytics"
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools'
 import { GoogleOAuthProvider } from '@react-oauth/google'
