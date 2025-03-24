@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Download, Mail, Phone, Building, Globe, MapPin, Home, Briefcase } from 'lucide-react';
 import { toast } from 'react-hot-toast';
-import { trackPageView, trackContactAdd, trackVcfDownload } from '@/utils/analytics';
+import { trackVCardPageLoad, trackContactAdd, trackVcfDownload } from '@/utils/analytics';
 
 export default function VCardRedirect() {
   const { id } = useParams<{ id: string }>();
@@ -22,8 +22,16 @@ export default function VCardRedirect() {
         const data = await qrService.getVCard(id);
         setVcard(data);
         
-        // Track page view using our new utility function that handles undefined values
-        await trackPageView(id, data.user_id);
+        // Only track events if the page is visible
+        if (document.visibilityState === 'visible') {
+          // Check if we're in the /r/ route or direct navigation, which indicates a QR scan
+          const isQRScan = window.location.pathname.startsWith('/r/') && document.referrer === '';
+          
+          // Use our new unified tracking function
+          await trackVCardPageLoad(id, data.user_id, isQRScan);
+        } else {
+          console.log('📊 Skipping analytics - page not visible');
+        }
       } catch (error) {
         console.error('Failed to fetch VCard:', error);
         toast.error('Failed to load contact information');
@@ -33,6 +41,20 @@ export default function VCardRedirect() {
     };
 
     fetchVCard();
+    
+    // Set up visibility change listener
+    const handleVisibilityChange = () => {
+      // Do not track anything on visibility change to prevent background tab issues
+      console.log(`Page visibility changed to: ${document.visibilityState}`);
+    };
+    
+    // Add visibility change listener
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    
+    // Clean up
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
   }, [id]);
 
   // Compute formatted home address from address object

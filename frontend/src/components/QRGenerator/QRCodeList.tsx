@@ -2,7 +2,7 @@
 
 import * as React from 'react'
 import { useState, useEffect } from 'react'
-import { Card, CardContent } from '../ui/card'
+import { Card, CardContent, CardHeader, CardTitle } from '../ui/card'
 import { Button } from '../ui/button'
 import { Input } from '../ui/input'
 import { 
@@ -14,7 +14,9 @@ import {
   QrCode,
   ChevronDown,
   Share2,
-  BarChart2
+  BarChart2,
+  Calendar,
+  Scan
 } from 'lucide-react'
 import {
   DropdownMenu,
@@ -32,6 +34,7 @@ import {
 import { qrService } from '@/services/api'
 import { toast } from 'react-hot-toast'
 import { useNavigate } from 'react-router-dom'
+import { Badge } from "../ui/badge"
 
 interface QRCode {
   id: string
@@ -84,13 +87,17 @@ const QRCodeList = React.forwardRef<{ refreshList: () => void }, QRCodeListProps
       const codes = await qrService.listQRCodes()
       
       // Transform the data to ensure vcard_id is available at the root level
-      const transformedCodes = codes.map(code => ({
-        ...code,
+      const transformedCodes = codes.map(code => {
         // Use root level vcard_id if it exists, otherwise try to get it from metadata
-        vcard_id: code.vcard_id || (code.metadata && code.metadata.vcard_id)
-      }))
+        const vcardId = code.vcard_id || (code.metadata && code.metadata.vcard_id) || '';
+        
+        return {
+          ...code,
+          vcard_id: vcardId
+        };
+      });
       
-      setQrCodes(transformedCodes)
+      setQrCodes(transformedCodes as QRCode[]);
       
       // Debug log for VCard IDs
       console.log('QR Codes with VCard IDs:', transformedCodes.map(code => ({
@@ -231,11 +238,7 @@ const QRCodeList = React.forwardRef<{ refreshList: () => void }, QRCodeListProps
 
   return (
     <div className={`space-y-6 ${className}`}>
-      <div className="flex items-center justify-between">
-        <h2 className="text-xl font-semibold">Your QR Codes</h2>
-      </div>
-
-      <div className="flex flex-col sm:flex-row justify-between gap-4">
+      <div className="flex flex-col sm:flex-row justify-between gap-4 pb-2">
         <div className="flex flex-1 gap-4">
           <Select value={filter} onValueChange={setFilter}>
             <SelectTrigger className="w-[180px]">
@@ -273,81 +276,101 @@ const QRCodeList = React.forwardRef<{ refreshList: () => void }, QRCodeListProps
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
         {filteredAndSortedQRCodes.map((qr) => (
-          <Card key={qr.id} className="overflow-hidden">
-            <CardContent className="p-6">
-              <div className="relative">
-                <img
-                  src={qr.qr_image_url}
-                  alt="QR Code"
-                  className="w-full aspect-square object-contain mb-4"
-                />
+          <Card 
+            key={qr.id} 
+            className="overflow-hidden shadow-sm hover:shadow transition-shadow border-gray-200"
+          >
+            <CardHeader className="pb-2 pt-3 px-4 border-b bg-gray-50/60">
+              <div className="flex justify-between items-start">
+                <Badge variant="outline" className="text-xs font-normal bg-white">
+                  {qr.type.toUpperCase()}
+                </Badge>
+                <Badge className="bg-primary/10 text-primary border-0 flex items-center gap-1">
+                  <Scan className="h-3 w-3" />
+                  {qr.total_scans} scans
+                </Badge>
+              </div>
+            </CardHeader>
+            <CardContent className="px-4 pt-3 pb-4">
+              <div className="relative bg-white rounded-md p-3 mb-3 border">
+                <div className="aspect-square flex items-center justify-center">
+                  <img
+                    src={qr.qr_image_url}
+                    alt="QR Code"
+                    className="w-[90%] h-[90%] object-contain"
+                  />
+                </div>
               </div>
               
               <div className="space-y-2">
-                <div className="flex justify-between items-center">
-                  <h3 className="font-semibold">
+                <div>
+                  <h3 className="font-semibold text-base truncate">
                     {qr.metadata?.vcard_name || 
                      `${qr.metadata?.firstName || ''} ${qr.metadata?.lastName || ''}`.trim() ||
                      qr.type.charAt(0).toUpperCase() + qr.type.slice(1)}
                   </h3>
-                  <span className="text-sm text-gray-500">
-                    {qr.total_scans} scans
-                  </span>
+                  <p className="text-xs text-muted-foreground flex items-center gap-1 mt-1">
+                    <Calendar className="h-3 w-3" />
+                    Created {new Date(qr.created_at).toLocaleDateString()}
+                  </p>
                 </div>
-                <p className="text-sm text-gray-500">
-                  Created {new Date(qr.created_at).toLocaleDateString()}
-                </p>
                 
-                <div className="flex gap-2 mt-4">
-                  {onEdit && (
-                    <Button variant="outline" size="sm" onClick={() => onEdit(qr)}>
-                      <Edit className="h-4 w-4" />
-                    </Button>
-                  )}
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="outline" size="sm">
-                        <Download className="h-4 w-4 mr-1" />
-                        <ChevronDown className="h-4 w-4" />
+                <div className="flex gap-2 mt-4 justify-between">
+                  <div className="flex gap-1">
+                    {onEdit && (
+                      <Button variant="outline" size="sm" onClick={() => onEdit(qr)} 
+                        className="h-8 w-8 p-0 border-gray-200">
+                        <Edit className="h-3.5 w-3.5" />
                       </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent>
-                      <DropdownMenuItem onClick={() => handleDownload(qr, 'png')}>
-                        Download PNG
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => handleDownload(qr, 'svg')}>
-                        Download SVG
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => handleDownload(qr, 'pdf')}>
-                        Download PDF
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                  {onShare && (
-                    <Button variant="outline" size="sm" onClick={() => onShare(qr)}>
-                      <Share2 className="h-4 w-4" />
-                    </Button>
-                  )}
-                  {showAnalytics && (
+                    )}
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="outline" size="sm" className="h-8 w-8 p-0 border-gray-200">
+                          <Download className="h-3.5 w-3.5" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent>
+                        <DropdownMenuItem onClick={() => handleDownload(qr, 'png')}>
+                          Download PNG
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => handleDownload(qr, 'svg')}>
+                          Download SVG
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => handleDownload(qr, 'pdf')}>
+                          Download PDF
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                    {onShare && (
+                      <Button variant="outline" size="sm" onClick={() => onShare(qr)} 
+                        className="h-8 w-8 p-0 border-gray-200">
+                        <Share2 className="h-3.5 w-3.5" />
+                      </Button>
+                    )}
+                  </div>
+                  <div className="flex gap-1">
+                    {showAnalytics && (
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        onClick={() => handleViewAnalytics(qr)}
+                        disabled={!(qr.vcard_id || (qr.metadata && qr.metadata.vcard_id))}
+                        title={!(qr.vcard_id || (qr.metadata && qr.metadata.vcard_id)) ? 
+                          "Analytics not available: Missing VCard ID" : "View analytics"}
+                        className="h-8 w-8 p-0 text-blue-600 hover:text-blue-700 hover:bg-blue-50 border-blue-200"
+                      >
+                        <BarChart2 className="h-3.5 w-3.5" />
+                      </Button>
+                    )}
                     <Button 
                       variant="outline" 
                       size="sm" 
-                      onClick={() => handleViewAnalytics(qr)}
-                      disabled={!(qr.vcard_id || (qr.metadata && qr.metadata.vcard_id))}
-                      title={!(qr.vcard_id || (qr.metadata && qr.metadata.vcard_id)) ? 
-                        "Analytics not available: Missing VCard ID" : "View analytics"}
+                      onClick={() => handleDelete(qr.id)}
+                      className="h-8 w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200"
                     >
-                      <BarChart2 className="h-4 w-4" />
+                      <Trash2 className="h-3.5 w-3.5" />
                     </Button>
-                  )}
-                  <Button 
-                    variant="outline" 
-                    size="sm" 
-                    onClick={() => handleDelete(qr.id)}
-                    className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
+                  </div>
                 </div>
               </div>
             </CardContent>
@@ -356,13 +379,32 @@ const QRCodeList = React.forwardRef<{ refreshList: () => void }, QRCodeListProps
       </div>
 
       {filteredAndSortedQRCodes.length === 0 && (
-        <div className="text-center py-10">
-          <QrCode className="h-12 w-12 mx-auto mb-4 text-gray-400" />
-          <p className="text-gray-500">No QR codes found</p>
-        </div>
+        <Card className="bg-muted/20 border-dashed">
+          <CardContent className="p-6">
+            <div className="flex flex-col items-center justify-center text-center py-8">
+              <div className="p-4 bg-muted/30 rounded-full mb-4">
+                <QrCode className="h-12 w-12 text-muted-foreground opacity-70" />
+              </div>
+              <h3 className="text-lg font-medium mb-2">No QR Codes Found</h3>
+              <p className="text-sm text-muted-foreground max-w-md mx-auto mb-6">
+                {searchQuery || filter !== 'all' ? 
+                  "Try adjusting your search or filters to find what you're looking for." : 
+                  "You haven't created any QR codes yet. Fill out the form above to get started."}
+              </p>
+              {(searchQuery || filter !== 'all') && (
+                <Button variant="outline" onClick={() => {
+                  setSearchQuery('');
+                  setFilter('all');
+                }}>
+                  Clear Filters
+                </Button>
+              )}
+            </div>
+          </CardContent>
+        </Card>
       )}
     </div>
   )
 })
 
-export default QRCodeList 
+export default QRCodeList

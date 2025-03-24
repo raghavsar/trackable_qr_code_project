@@ -18,7 +18,6 @@ COPY shared /app/shared
 # Copy the service code
 COPY qr-service/app /app/app
 
-
 # Make sure the shared module is in Python path
 ENV PYTHONPATH=/app
 

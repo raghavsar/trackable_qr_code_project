@@ -92,20 +92,20 @@ class RedisStore:
         """Record a scan event in Redis"""
         today = datetime.utcnow().date().isoformat()
         
-        # Increment total scans
-        await self.increment_counter(today, "total_scans")
-        
-        # Increment action type counter
-        if scan_data["action_type"] == "contact_add":
+        # Increment appropriate counters based on action type
+        if scan_data["action_type"] == "scan":
+            # Only increment total_scans for actual scan events
+            await self.increment_counter(today, "total_scans")
+            
+            # Increment device type counter only for scan events
+            if scan_data["device_info"]["is_mobile"]:
+                await self.increment_counter(today, "mobile_scans")
+            else:
+                await self.increment_counter(today, "desktop_scans")
+        elif scan_data["action_type"] == "contact_add":
             await self.increment_counter(today, "contact_adds")
         elif scan_data["action_type"] == "vcf_download":
             await self.increment_counter(today, "vcf_downloads")
         
-        # Increment device type counter
-        if scan_data["device_info"]["is_mobile"]:
-            await self.increment_counter(today, "mobile_scans")
-        else:
-            await self.increment_counter(today, "desktop_scans")
-        
-        # Add to recent scans
+        # Add to recent scans list regardless of action type
         await self.add_recent_scan(scan_data) 

@@ -19,39 +19,71 @@ import VCardForm from "@/components/QRGenerator/VCardForm"
 import VCardRedirect from "@/pages/VCardRedirect"
 import { LandingPage } from "@/components/LandingPage"
 import { useAuth } from "@/hooks/useAuth"
+import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card"
+import { QrCode, FileText, Link } from "lucide-react"
 
 const queryClient = new QueryClient()
 
 const Dashboard = () => {
   return (
-    <Tabs defaultValue="qr-codes" className="space-y-6">
-      <TabsList>
-        <TabsTrigger value="qr-codes">QR Codes</TabsTrigger>
-        <TabsTrigger value="pages">Pages</TabsTrigger>
-        <TabsTrigger value="short-links">Short Links</TabsTrigger>
-      </TabsList>
-
-      <TabsContent value="qr-codes" className="space-y-8">
-        <div className="grid gap-6">
-          <div className="space-y-4">
-            <h2 className="text-2xl font-bold">Create New QR Code</h2>
-            <VCardForm />
-          </div>
-
-          <div className="space-y-4">
-            <h2 className="text-2xl font-bold">Your QR Codes</h2>
+    <Card className="border shadow-sm overflow-hidden mb-8">
+      <CardHeader className="pb-4 bg-gray-50/80 border-b">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center">
+          <div>
+            <CardTitle className="text-xl font-bold">QR Code Generator</CardTitle>
+            <CardDescription className="text-muted-foreground mt-1">
+              Create and manage your QR codes and digital assets
+            </CardDescription>
           </div>
         </div>
-      </TabsContent>
+      </CardHeader>
+      <CardContent className="p-0">
+        <Tabs defaultValue="qr-codes" className="w-full">
+          <div className="px-6 pt-6 pb-2 border-b">
+            <TabsList className="w-full sm:w-auto grid grid-cols-3 sm:inline-flex">
+              <TabsTrigger value="qr-codes" className="gap-2">
+                <QrCode className="h-4 w-4" />
+                <span>QR Codes</span>
+              </TabsTrigger>
+              <TabsTrigger value="pages" className="gap-2">
+                <FileText className="h-4 w-4" />
+                <span>Pages</span>
+              </TabsTrigger>
+              <TabsTrigger value="short-links" className="gap-2">
+                <Link className="h-4 w-4" />
+                <span>Short Links</span>
+              </TabsTrigger>
+            </TabsList>
+          </div>
 
-      <TabsContent value="pages">
-        <p>Landing pages coming soon...</p>
-      </TabsContent>
+          <div className="p-6">
+            <TabsContent value="qr-codes" className="mt-0 space-y-8">
+              <VCardForm />
+            </TabsContent>
 
-      <TabsContent value="short-links">
-        <p>URL shortener coming soon...</p>
-      </TabsContent>
-    </Tabs>
+            <TabsContent value="pages" className="mt-0">
+              <div className="flex flex-col items-center justify-center py-12 text-center border rounded-lg border-dashed bg-muted/20">
+                <FileText className="h-16 w-16 text-muted-foreground mb-4 opacity-50" />
+                <h3 className="text-lg font-medium mb-2">Landing Pages Coming Soon</h3>
+                <p className="text-sm text-muted-foreground max-w-md mx-auto">
+                  This feature is currently under development. You'll soon be able to create custom landing pages for your QR codes.
+                </p>
+              </div>
+            </TabsContent>
+
+            <TabsContent value="short-links" className="mt-0">
+              <div className="flex flex-col items-center justify-center py-12 text-center border rounded-lg border-dashed bg-muted/20">
+                <Link className="h-16 w-16 text-muted-foreground mb-4 opacity-50" />
+                <h3 className="text-lg font-medium mb-2">URL Shortener Coming Soon</h3>
+                <p className="text-sm text-muted-foreground max-w-md mx-auto">
+                  This feature is currently under development. You'll soon be able to create and track shortened URLs.
+                </p>
+              </div>
+            </TabsContent>
+          </div>
+        </Tabs>
+      </CardContent>
+    </Card>
   )
 }
 
