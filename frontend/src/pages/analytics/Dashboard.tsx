@@ -4,11 +4,11 @@ import { useState, useCallback, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { 
-  Line, LineChart, XAxis, YAxis, CartesianGrid, Tooltip, 
+  XAxis, YAxis, CartesianGrid, Tooltip, 
   ResponsiveContainer, AreaChart, Area 
 } from "recharts"
 import { 
-  QrCode, Smartphone, Loader2, RefreshCw, AlertCircle, ArrowLeft,
+  QrCode, Smartphone, Loader2, RefreshCw, ArrowLeft,
   Users, Download, Calendar, Clock, TrendingUp, ExternalLink 
 } from "lucide-react"
 import { useAnalyticsSSE } from '@/hooks/useAnalyticsSSE';
@@ -39,7 +39,6 @@ export default function AnalyticsDashboard() {
     metrics: historicalMetrics, 
     loading: historyLoading, 
     error: historyError,
-    hasData,
     refetch: refetchHistory
   } = useHistoricalAnalytics({
     startDate,

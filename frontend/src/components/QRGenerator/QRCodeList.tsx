@@ -2,7 +2,7 @@
 
 import * as React from 'react'
 import { useState, useEffect } from 'react'
-import { Card, CardContent, CardHeader, CardTitle } from '../ui/card'
+import { Card, CardContent, CardHeader } from '../ui/card'
 import { Button } from '../ui/button'
 import { Input } from '../ui/input'
 import { 
@@ -12,7 +12,6 @@ import {
   Loader2, 
   AlertCircle,
   QrCode,
-  ChevronDown,
   Share2,
   BarChart2,
   Calendar,
@@ -116,19 +115,6 @@ const QRCodeList = React.forwardRef<{ refreshList: () => void }, QRCodeListProps
   React.useImperativeHandle(ref, () => ({
     refreshList: fetchQRCodes
   }))
-
-  const addQRCode = (newQRCode: QRCode) => {
-    setQrCodes(prevCodes => [newQRCode, ...prevCodes])
-    fetchQRCodes()
-  }
-
-  const updateQRCode = (updatedQRCode: QRCode) => {
-    setQrCodes(prevCodes => 
-      prevCodes.map(code => 
-        code.id === updatedQRCode.id ? updatedQRCode : code
-      )
-    )
-  }
 
   const removeQRCode = (id: string) => {
     setQrCodes(prevCodes => prevCodes.filter(code => code.id !== id))

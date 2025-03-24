@@ -10,7 +10,6 @@ import {
 import { useNavigate, Outlet, useLocation } from "react-router-dom"
 import { useAuth } from "@/hooks/useAuth"
 import { ErrorBoundary } from "./ErrorBoundary"
-import { LandingPage } from "./LandingPage"
 
 // Loading spinner component
 const LoadingSpinner = () => (

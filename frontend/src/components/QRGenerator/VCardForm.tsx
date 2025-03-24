@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from 'react'
-import { useState, useEffect } from "react"
+import { useState } from "react"
 import { Button } from "../ui/button"
 import { Input } from "../ui/input"
 import { Label } from "../ui/label"
@@ -9,20 +9,27 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "../ui
 import { Textarea } from "../ui/textarea"
 import { toast } from 'react-hot-toast'
 import { qrService } from '@/services/api'
-import type { QRCodeResponse, VCardData } from '@/types/api'
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../ui/dropdown-menu"
+import type { QRCodeResponse } from '@/types/api'
 import { 
-  ChevronDown, Download, Edit, Share2, Trash2, BarChart2, 
+  ChevronRight,
   User, Briefcase, MapPin, Mail, Phone, Globe, FileText, 
-  Image, Upload, PlusCircle, CheckCircle2, QrCode, Check,
-  UserPlus, CreditCard
+  Upload, PlusCircle, QrCode, Check,
+  CreditCard
 } from 'lucide-react'
 import QRCodeEditor from './QRCodeEditor'
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import QRCodeList from './QRCodeList'
 import { Badge } from "../ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../ui/tabs"
-import { ScrollArea } from "../ui/scroll-area"
+import { 
+  AlertDialog,
+  AlertDialogAction, 
+  AlertDialogCancel,
+  AlertDialogContent, 
+  AlertDialogDescription, 
+  AlertDialogFooter, 
+  AlertDialogHeader, 
+  AlertDialogTitle
+} from "../ui/alert-dialog"
 
 interface FormData {
   first_name: string
@@ -177,6 +184,7 @@ export default function VCardForm() {
   const [showEditor, setShowEditor] = useState(false)
   const [activeTab, setActiveTab] = useState("personal")
   const qrListRef = React.useRef<{ refreshList: () => void } | null>(null)
+  const [deleteCodeId, setDeleteCodeId] = useState<string | null>(null)
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target
@@ -252,25 +260,6 @@ export default function VCardForm() {
     }
   }
 
-  const handleDownload = async (qrCode: QRCodeResponse, format: 'png' | 'svg' | 'pdf') => {
-    try {
-      const url = qrCode.qr_image_url
-      const response = await fetch(url)
-      const blob = await response.blob()
-      const downloadUrl = window.URL.createObjectURL(blob)
-      const link = document.createElement('a')
-      link.href = downloadUrl
-      link.download = `qr-code.${format}`
-      document.body.appendChild(link)
-      link.click()
-      document.body.removeChild(link)
-      window.URL.revokeObjectURL(downloadUrl)
-    } catch (error) {
-      console.error('Failed to download QR code:', error)
-      toast.error('Failed to download QR code')
-    }
-  }
-
   const handleShare = async (qrCode: QRCodeResponse) => {
     try {
       const redirectUrl = `${window.location.origin}/r/${qrCode.vcard_id}`;
@@ -291,14 +280,14 @@ export default function VCardForm() {
     }
   };
 
-  const handleDelete = async (code: QRCodeResponse) => {
+  const confirmDelete = async () => {
+    if (!deleteCodeId) return;
+    
     try {
-      if (!confirm('Are you sure you want to delete this QR code?')) {
-        return
-      }
-      
-      await qrService.deleteQRCode(code.id)
+      await qrService.deleteQRCode(deleteCodeId)
       toast.success('QR code deleted successfully')
+      qrListRef.current?.refreshList()
+      setDeleteCodeId(null)
     } catch (error) {
       console.error('Failed to delete QR code:', error)
       toast.error('Failed to delete QR code')
@@ -314,17 +303,27 @@ export default function VCardForm() {
     setShowEditor(false)
   }
 
-  // Add the analytics handler function
-  const handleViewAnalytics = (code: QRCodeResponse) => {
-    window.open(`/analytics/qr/${code.id}`, '_blank');
-  };
-
   const isFormComplete = () => {
     return formData.first_name && formData.last_name && formData.email;
   };
 
   return (
     <div className="container mx-auto p-4 space-y-10 max-w-7xl">
+      <AlertDialog open={!!deleteCodeId} onOpenChange={(isOpen: boolean) => !isOpen && setDeleteCodeId(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This action cannot be undone. This will permanently delete the QR code.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmDelete}>Delete</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       {showEditor && qrCode ? (
         <QRCodeEditor 
           qrCode={qrCode} 
@@ -441,7 +440,7 @@ export default function VCardForm() {
                             className="gap-2"
                           >
                             Next: Company Details 
-                            <ChevronDown className="h-4 w-4 rotate-270" />
+                            <ChevronRight className="h-4 w-4" />
                           </Button>
                         </div>
                       </div>
@@ -527,7 +526,7 @@ export default function VCardForm() {
                             className="gap-2"
                           >
                             Next: Contact Info
-                            <ChevronDown className="h-4 w-4 rotate-270" />
+                            <ChevronRight className="h-4 w-4" />
                           </Button>
                         </div>
                       </div>

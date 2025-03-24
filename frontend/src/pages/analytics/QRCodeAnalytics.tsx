@@ -6,16 +6,14 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { AnalyticsService } from '@/services/api'
-import type { AnalyticsData, ScanEvent } from '@/types/analytics'
-import { format, parseISO } from 'date-fns'
+import type { AnalyticsData } from '@/types/analytics'
+import { format } from 'date-fns'
 import { 
   Loader2, RefreshCw, Smartphone, Globe, ArrowLeft, 
   QrCode, Users, Download, Calendar, Clock, 
-  TrendingUp, ExternalLink, CheckCircle2
+  TrendingUp, ExternalLink
 } from 'lucide-react'
 import {
-  LineChart,
-  Line,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -29,8 +27,6 @@ import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ScrollArea } from "@/components/ui/scroll-area"
 
-const API_URL = import.meta.env.VITE_API_URL
-
 const analyticsService = new AnalyticsService()
 
 export default function VCardAnalytics() {
@@ -43,7 +39,7 @@ export default function VCardAnalytics() {
   const [activeTab, setActiveTab] = useState("overview")
   
   // Get real-time updates with VCard ID
-  const { metrics: realtimeMetrics, error: realtimeError, isConnected } = useAnalyticsSSE({ vcardId: id })
+  const { metrics: realtimeMetrics, isConnected } = useAnalyticsSSE({ vcardId: id })
 
   // Initialize metrics with default values
   const metrics = {

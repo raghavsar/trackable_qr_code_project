@@ -5,7 +5,7 @@ import type { VCardResponse } from '@/types/api';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Download, Mail, Phone, Building, Globe, MapPin, Home, Briefcase } from 'lucide-react';
+import { Download, Mail, Phone, Building, Globe, Home, Briefcase } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { trackVCardPageLoad, trackContactAdd, trackVcfDownload } from '@/utils/analytics';
 
