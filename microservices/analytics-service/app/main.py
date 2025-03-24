@@ -28,14 +28,16 @@ from jwt.exceptions import InvalidTokenError, ExpiredSignatureError, DecodeError
 from fastapi import status
 import traceback
 import time
+import httpx
 
 from shared.models import PyObjectId, ScanTrackingEvent
 from app.database import get_database
-from app.redis_store import get_redis_client
+from app.redis_store import get_redis_client, RedisStore
 from app.config import settings
 
 if TYPE_CHECKING:
     from motor.motor_asyncio import AsyncIOMotorDatabase
+    import redis.asyncio as redis
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -283,20 +285,55 @@ class SSEManager:
 sse_manager = SSEManager()
 
 @app.on_event("startup")
-async def startup_db_client() -> None:
-    """Initialize database connection on startup"""
-    logger.info("Starting up analytics service")
-    # Connect to MongoDB
-    app.mongodb_client = AsyncIOMotorClient(os.getenv("MONGODB_URL"))
-    app.mongodb = app.mongodb_client.get_database()
-    logger.info("Connected to MongoDB")
+async def startup_db_client():
+    """Initialize database, Redis, SSE manager, and HTTP client on startup"""
+    try:
+        logger.info("Initializing Analytics Service...")
+        
+        # Initialize MongoDB client
+        app.mongodb_client = AsyncIOMotorClient(settings.MONGODB_URL)
+        app.mongodb = app.mongodb_client.get_default_database()
+        logger.info(f"Connected to MongoDB: {settings.MONGODB_URL}")
+        
+        # Initialize Redis client
+        try:
+            app.redis_client = await get_redis_client()
+            logger.info("Connected to Redis successfully")
+        except Exception as redis_error:
+            logger.error(f"Failed to connect to Redis: {redis_error}")
+            logger.warning("Redis features will be disabled")
+            app.redis_client = None
+        
+        # Initialize SSE manager
+        app.state.sse_manager = SSEManager()
+        logger.info("SSE Manager initialized")
+        
+        # Initialize HTTP client for outgoing requests
+        app.http_client = httpx.AsyncClient()
+        logger.info("HTTP client initialized")
+        
+        logger.info("Analytics service started successfully")
+    except Exception as e:
+        logger.error(f"Startup error: {e}")
+        logger.error(traceback.format_exc())
+        raise
 
 @app.on_event("shutdown")
 async def shutdown_db_client():
-    logger.info("Shutting down analytics service")
-    if hasattr(app, "mongodb_client"):
-        app.mongodb_client.close()
-        logger.info("Closed MongoDB connection")
+    """Close connections on shutdown"""
+    try:
+        if hasattr(app, "mongodb_client"):
+            app.mongodb_client.close()
+            logger.info("MongoDB connection closed")
+            
+        if hasattr(app, "http_client"):
+            await app.http_client.aclose()
+            logger.info("HTTP client closed")
+            
+        logger.info("Analytics service shutdown complete")
+    except Exception as e:
+        logger.error(f"Error during shutdown: {e}")
+        logger.error(traceback.format_exc())
 
 async def get_real_time_metrics(db: Any) -> Dict[str, Any]:
     """Get real-time analytics metrics"""
@@ -407,87 +444,194 @@ async def stream_metrics(
     return EventSourceResponse(event_generator())
 
 @app.get("/api/v1/analytics/vcard/{vcard_id}/stream")
-async def stream_vcard_metrics_alt(
+async def stream_vcard_metrics(
     vcard_id: str,
     request: Request,
     db: Any = Depends(get_database)
 ) -> EventSourceResponse:
-    """SSE endpoint for real-time metrics of a specific VCard"""
+    """SSE endpoint for real-time metrics of a specific VCard with enhanced error handling"""
     client_id = str(uuid.uuid4())
     logger.info(f"New VCard SSE connection: {client_id} for VCard {vcard_id}")
+    
+    # Create a queue for this client
+    client_queue = asyncio.Queue()
+    
+    # Register connection info
+    connection_time = datetime.utcnow().isoformat()
+    client_info = {
+        "client_id": client_id,
+        "connected_at": connection_time,
+        "type": "vcard",
+        "vcard_id": vcard_id,
+        "user_agent": request.headers.get("user-agent", ""),
+        "ip": request.client.host if request.client else "unknown",
+        "queue": client_queue
+    }
     
     # Validate VCard exists
     try:
         # Try as ObjectId first
-        vcard = await db.vcards.find_one({"_id": PyObjectId(vcard_id)})
-    except:
-        # Try as string if ObjectId fails
-        vcard = await db.vcards.find_one({"_id": vcard_id})
+        vcard = None
+        try:
+            vcard = await db.vcards.find_one({"_id": PyObjectId(vcard_id)})
+        except:
+            # Try as string if ObjectId fails
+            vcard = await db.vcards.find_one({"_id": vcard_id})
+                
+        if not vcard:
+            logger.error(f"VCard not found for SSE stream: {vcard_id}")
             
-    if not vcard:
-        logger.error(f"VCard not found for SSE stream: {vcard_id}")
-        # Return error response
+            async def error_generator():
+                yield {
+                    "event": "error",
+                    "data": json.dumps({
+                        "error": "VCard not found",
+                        "vcard_id": vcard_id
+                    })
+                }
+            
+            return EventSourceResponse(
+                error_generator(),
+                media_type="text/event-stream",
+                headers={
+                    "Cache-Control": "no-cache",
+                    "Connection": "keep-alive",
+                    "X-Accel-Buffering": "no",
+                    "Access-Control-Allow-Origin": "*"
+                }
+            )
+        
+        # Register client with SSE manager
+        if not hasattr(app.state, "sse_manager"):
+            app.state.sse_manager = SSEManager()
+            logger.info("Created new SSE Manager instance")
+            
+        await app.state.sse_manager.register_vcard(vcard_id, client_id, client_queue, client_info)
+        
+        # Define disconnect handler
+        @request.on_disconnect
+        async def disconnect():
+            logger.info(f"Client disconnected: {client_id} for VCard {vcard_id}")
+            app.state.sse_manager.remove_client(client_id)
+        
+        # Define event generator that listens to the queue
+        async def event_generator():
+            try:
+                # Send immediate VCard metrics
+                metrics = await get_vcard_real_time_metrics(db, vcard_id)
+                logger.info(f"Sending initial metrics for VCard {vcard_id}")
+                
+                yield {
+                    "event": "metrics",
+                    "data": json.dumps({
+                        "type": "vcard",
+                        "vcard_id": vcard_id,
+                        "metrics": metrics,
+                        "timestamp": datetime.utcnow().isoformat()
+                    })
+                }
+                
+                # Start listening for events from the queue
+                while True:
+                    try:
+                        # Wait for new events with a timeout
+                        event = await asyncio.wait_for(client_queue.get(), timeout=30)
+                        
+                        # Check if it's a close event
+                        if event.get("event") == "close":
+                            logger.info(f"Received close event for client {client_id}")
+                            break
+                            
+                        # Otherwise yield the event to the client
+                        if isinstance(event.get("data"), dict):
+                            yield {
+                                "event": event.get("event", "message"),
+                                "data": json.dumps(event.get("data"))
+                            }
+                        else:
+                            yield {
+                                "event": event.get("event", "message"),
+                                "data": event.get("data", "")
+                            }
+                        
+                    except asyncio.TimeoutError:
+                        # Send keep-alive ping event
+                        logger.debug(f"Sending keep-alive for client {client_id}")
+                        yield {
+                            "event": "ping",
+                            "data": json.dumps({
+                                "timestamp": datetime.utcnow().isoformat()
+                            })
+                        }
+                    except Exception as e:
+                        logger.error(f"Error in event generator for client {client_id}: {e}")
+                        logger.error(traceback.format_exc())
+                        
+                        # Send error event to client
+                        yield {
+                            "event": "error",
+                            "data": json.dumps({
+                                "error": str(e)
+                            })
+                        }
+                        
+                        # Try to wait and continue
+                        await asyncio.sleep(5)
+                
+            except Exception as outer_e:
+                logger.error(f"Fatal error in event generator for client {client_id}: {outer_e}")
+                logger.error(traceback.format_exc())
+                
+                # Clean up client registration
+                app.state.sse_manager.remove_client(client_id)
+                
+                # Send final error to client
+                yield {
+                    "event": "error",
+                    "data": json.dumps({
+                        "error": str(outer_e),
+                        "fatal": True
+                    })
+                }
+        
+        return EventSourceResponse(
+            event_generator(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "Content-Type": "text/event-stream",
+                "X-Accel-Buffering": "no",
+                "Access-Control-Allow-Origin": "*",
+                "Access-Control-Allow-Credentials": "true",
+                "Access-Control-Allow-Methods": "GET, OPTIONS",
+                "Access-Control-Allow-Headers": "Content-Type, Authorization"
+            }
+        )
+        
+    except Exception as e:
+        logger.error(f"Error setting up SSE for VCard {vcard_id}, client {client_id}: {e}")
+        logger.error(traceback.format_exc())
+        
         async def error_generator():
             yield {
                 "event": "error",
                 "data": json.dumps({
-                    "error": "VCard not found"
+                    "error": str(e),
+                    "fatal": True
                 })
             }
-        return error_generator()
-    
-    async def event_generator():
-        try:
-            # Get initial metrics
-            metrics = await get_vcard_real_time_metrics(db, vcard_id)
-            logger.info(f"Initial metrics for VCard {vcard_id}: {metrics}")
-            
-            # Send initial metrics
-            yield {
-                "event": "metrics",
-                "data": json.dumps(metrics)
+        
+        return EventSourceResponse(
+            error_generator(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "Content-Type": "text/event-stream",
+                "X-Accel-Buffering": "no", 
             }
-            
-            # Send periodic updates
-            while True:
-                # Get updated metrics
-                metrics = await get_vcard_real_time_metrics(db, vcard_id)
-                logger.info(f"Updated metrics for VCard {vcard_id}: {metrics}")
-                
-                # Send metrics event
-                yield {
-                    "event": "metrics",
-                    "data": json.dumps(metrics)
-                }
-                
-                # Wait before next update
-                await asyncio.sleep(5)
-                
-        except Exception as e:
-            logger.error(f"Error in VCard SSE stream for client {client_id}: {e}")
-            logger.error(traceback.format_exc())
-            
-            # Send error event
-            yield {
-                "event": "error",
-                "data": json.dumps({
-                    "error": str(e)
-                })
-            }
-
-    return EventSourceResponse(
-        event_generator(),
-        media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "Connection": "keep-alive",
-            "X-Accel-Buffering": "no",
-            "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Credentials": "true",
-            "Access-Control-Allow-Methods": "GET, OPTIONS",
-            "Access-Control-Allow-Headers": "Content-Type, Authorization"
-        }
-    )
+        )
 
 @app.get("/api/v1/analytics/metrics/daily")
 async def get_daily_metrics(
@@ -835,3 +979,113 @@ async def get_vcard_analytics(
             "vcard_id": vcard_id,
             "timeRange": timeRange
         }
+
+@app.post("/api/v1/analytics/scan")
+async def record_scan_event(
+    scan_data: ScanTrackingEvent,
+    db: Any = Depends(get_database),
+    background_tasks: BackgroundTasks = None
+):
+    """Record a scan event and broadcast to SSE clients"""
+    event_id = str(uuid.uuid4())
+    
+    try:
+        # Log the incoming event
+        logger.info(f"Recording scan event: {scan_data.dict()}")
+        
+        # Store in MongoDB
+        scan_record = scan_data.dict()
+        
+        # Parse timestamp if it's a string
+        if isinstance(scan_data.timestamp, str):
+            try:
+                scan_record["timestamp"] = parse_datetime(scan_data.timestamp)
+            except Exception as e:
+                logger.error(f"Error parsing timestamp: {e}")
+                scan_record["timestamp"] = datetime.utcnow()
+        
+        # Insert into MongoDB
+        result = await db.scan_events.insert_one(scan_record)
+        inserted_id = str(result.inserted_id)
+        logger.info(f"Scan event stored with ID: {inserted_id}")
+        
+        # Update Redis real-time metrics if Redis is available
+        if hasattr(app, "redis_client") and app.redis_client is not None:
+            try:
+                redis_store = RedisStore(os.getenv("REDIS_URL", "redis://redis:6379/0"))
+                await redis_store.record_scan(scan_record)
+                logger.info("Scan event recorded in Redis")
+            except Exception as redis_error:
+                logger.error(f"Redis error: {redis_error}")
+                logger.error(traceback.format_exc())
+        
+        # Broadcast to SSE clients if vcard_id is present and SSE manager exists
+        if scan_data.vcard_id and hasattr(app.state, "sse_manager"):
+            try:
+                # Get updated metrics for this VCard
+                vcard_metrics = await get_vcard_real_time_metrics(db, scan_data.vcard_id)
+                
+                # Broadcast to VCard-specific clients
+                await app.state.sse_manager.broadcast_vcard(scan_data.vcard_id, {
+                    "event": "scan",
+                    "data": vcard_metrics
+                })
+                logger.info(f"Broadcast scan event to VCard {scan_data.vcard_id} clients")
+            except Exception as sse_error:
+                logger.error(f"Error broadcasting to SSE clients: {sse_error}")
+                logger.error(traceback.format_exc())
+        
+        return {"success": True, "event_id": inserted_id}
+    except Exception as e:
+        logger.error(f"Error recording scan event {event_id}: {e}")
+        logger.error(traceback.format_exc())
+        # Return an error response, but don't raise an exception to ensure tracking still works
+        return JSONResponse(
+            status_code=500,
+            content={"success": False, "error": str(e), "event_id": event_id}
+        )
+
+@app.post("/t/{tracking_id}")
+async def track_scan(
+    tracking_id: str,
+    request: Request,
+    db: Any = Depends(get_database),
+    background_tasks: BackgroundTasks = BackgroundTasks()
+):
+    """Handle tracking requests from redirect service"""
+    try:
+        logger.info(f"Tracking scan for ID: {tracking_id}")
+        
+        # Try to get user agent and parse device info
+        user_agent = request.headers.get("user-agent", "")
+        
+        # Extract basic device info from user agent
+        is_mobile = "mobile" in user_agent.lower() or "android" in user_agent.lower() or "iphone" in user_agent.lower()
+        
+        # Create scan event data
+        scan_data = ScanTrackingEvent(
+            event_id=str(uuid.uuid4()),
+            vcard_id=tracking_id,  # Use tracking_id as vcard_id
+            timestamp=datetime.utcnow(),
+            device_info={
+                "is_mobile": is_mobile,
+                "user_agent": user_agent,
+                "ip_address": request.client.host if request.client else None,
+            },
+            action_type="scan",
+            success=True,
+            ip_address=request.client.host if request.client else None,
+            referrer=request.headers.get("referer", None),
+            user_agent=user_agent
+        )
+        
+        # Use background task to record scan to avoid blocking the response
+        background_tasks.add_task(record_scan_event, scan_data, db)
+        
+        # Return a 204 No Content response to ensure fast response time
+        return Response(status_code=204)
+    except Exception as e:
+        logger.error(f"Error tracking scan for {tracking_id}: {e}")
+        logger.error(traceback.format_exc())
+        # Return 204 anyway to avoid client errors
+        return Response(status_code=204)

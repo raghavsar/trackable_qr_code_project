@@ -7,9 +7,10 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Download, Mail, Phone, Building, Globe, MapPin, Home, Briefcase } from 'lucide-react';
 import { toast } from 'react-hot-toast';
+import { trackPageView, trackContactAdd, trackVcfDownload } from '@/utils/analytics';
 
 export default function VCardRedirect() {
-  const { id } = useParams();
+  const { id } = useParams<{ id: string }>();
   const [vcard, setVcard] = useState<VCardResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [isAdding, setIsAdding] = useState(false);
@@ -21,31 +22,8 @@ export default function VCardRedirect() {
         const data = await qrService.getVCard(id);
         setVcard(data);
         
-        // Track page view without incrementing scan count
-        const apiUrl = import.meta.env.VITE_API_URL;
-        await fetch(`${apiUrl}/api/v1/analytics/scan`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            vcard_id: id,
-            user_id: data.user_id,
-            timestamp: new Date().toISOString(),
-            device_info: {
-              is_mobile: /Mobi|Android/i.test(navigator.userAgent),
-              device: navigator.platform,
-              os: navigator.platform,
-              browser: navigator.userAgent
-            },
-            action_type: 'page_view',
-            success: true,
-            ip_address: null,
-            headers: {
-              'user-agent': navigator.userAgent
-            }
-          })
-        });
+        // Track page view using our new utility function that handles undefined values
+        await trackPageView(id, data.user_id);
       } catch (error) {
         console.error('Failed to fetch VCard:', error);
         toast.error('Failed to load contact information');
@@ -80,28 +58,15 @@ export default function VCardRedirect() {
     if (isAdding) return; // Prevent multiple clicks
     setIsAdding(true);
     try {
-      const apiUrl = import.meta.env.VITE_API_URL;
-      const response = await fetch(`${apiUrl}/api/v1/analytics/contact/add?vcard_id=${id}`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          vcard_id: vcard?._id,
-          user_id: vcard?.user_id,
-          timestamp: new Date().toISOString(),
-          device_info: {
-            is_mobile: /Mobi|Android/i.test(navigator.userAgent),
-            device: navigator.platform,
-            os: navigator.platform,
-            browser: navigator.userAgent
-          },
-          action_type: 'contact_add',
-          success: true
-        })
-      });
+      if (!vcard || !vcard._id || !vcard.user_id) {
+        toast.error('Invalid VCard data');
+        return;
+      }
       
-      if (response.ok) {
+      // Track contact add using our new utility function
+      const success = await trackContactAdd(vcard._id, vcard.user_id);
+      
+      if (success) {
         toast.success('Contact added successfully!');
         
         // Trigger VCF download after tracking is complete
@@ -122,33 +87,11 @@ export default function VCardRedirect() {
     try {
       if (!vcard) return;
       
+      // Track download using our new utility function
+      await trackVcfDownload(vcard._id, vcard.user_id);
+      
       // Get API URL from environment
       const apiUrl = import.meta.env.VITE_API_URL;
-      
-      // Track download
-      await fetch(`${apiUrl}/api/v1/analytics/scan`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          vcard_id: vcard._id,
-          user_id: vcard.user_id,
-          timestamp: new Date().toISOString(),
-          device_info: {
-            is_mobile: /Mobi|Android/i.test(navigator.userAgent),
-            device: navigator.platform,
-            os: navigator.platform,
-            browser: navigator.userAgent
-          },
-          action_type: 'vcf_download',
-          success: true,
-          ip_address: null,
-          headers: {
-            'user-agent': navigator.userAgent
-          }
-        })
-      });
       
       // Download VCF
       const response = await fetch(`${apiUrl}/api/v1/vcards/${vcard._id}/download`, {
