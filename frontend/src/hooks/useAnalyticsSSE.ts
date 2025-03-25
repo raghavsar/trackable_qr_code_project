@@ -24,6 +24,7 @@ export const useAnalyticsSSE = ({ vcardId }: UseAnalyticsSSEProps = {}) => {
     status: 'connecting',
     reconnectAttempt: 0
   });
+  const [isConnected, setIsConnected] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
   const navigate = useNavigate();
   const eventSourceRef = useRef<EventSource | null>(null);
@@ -45,43 +46,83 @@ export const useAnalyticsSSE = ({ vcardId }: UseAnalyticsSSEProps = {}) => {
       
       console.log(`📊 Fetching initial metrics from endpoint: ${endpoint}`);
       
-      const response = await fetch(
-        endpoint,
-        {
-          headers: {
-            'Authorization': `Bearer ${localStorage.getItem('token')}`
-          }
-        }
-      );
-      
-      if (!response.ok) {
-        console.error(`❌ HTTP error fetching initial metrics: ${response.status} ${response.statusText}`);
-        throw new Error(`HTTP error! status: ${response.status}`);
+      const token = localStorage.getItem('token');
+      if (!token) {
+        console.error('❌ No authentication token found');
+        setError(new Error('Authentication required'));
+        return;
       }
       
-      const data = await response.json();
-      console.log('📊 Initial metrics data received:', data);
+      // Add retry logic for initial data fetch
+      let retries = 0;
+      const maxRetries = 3;
       
-      // Ensure the data is properly structured before setting state
-      if (data) {
-        setMetrics(prevMetrics => {
-          const newMetrics = {
-            ...prevMetrics,
-            ...data,
-            // Explicitly set the critical fields
-            total_scans: data.total_scans ?? prevMetrics?.total_scans ?? 0,
-            mobile_scans: data.mobile_scans ?? prevMetrics?.mobile_scans ?? 0,
-            contact_adds: data.contact_adds ?? prevMetrics?.contact_adds ?? 0,
-            vcf_downloads: data.vcf_downloads ?? prevMetrics?.vcf_downloads ?? 0,
-            recent_scans: Array.isArray(data.recent_scans) 
-              ? data.recent_scans 
-              : prevMetrics?.recent_scans ?? []
-          };
-          console.log('📊 Initial metrics state set to:', newMetrics);
-          return newMetrics;
-        });
-      } else {
-        console.error('❌ Initial metrics data is empty or invalid:', data);
+      while (retries < maxRetries) {
+        try {
+          const response = await fetch(
+            endpoint,
+            {
+              headers: {
+                'Authorization': `Bearer ${token}`
+              }
+            }
+          );
+          
+          if (!response.ok) {
+            console.error(`❌ HTTP error fetching initial metrics: ${response.status} ${response.statusText}`);
+            if (response.status === 401) {
+              // Handle unauthorized access
+              localStorage.removeItem('token');
+              navigate('/login');
+              throw new Error('Authentication expired. Please log in again.');
+            }
+            throw new Error(`HTTP error! status: ${response.status}`);
+          }
+          
+          const data = await response.json();
+          console.log('📊 Initial metrics data received:', data);
+          
+          // If we get here, the fetch was successful
+          
+          // Ensure the data is properly structured before setting state
+          if (data) {
+            setMetrics(prevMetrics => {
+              const newMetrics = {
+                ...prevMetrics,
+                ...data,
+                // Explicitly set the critical fields
+                total_scans: data.total_scans ?? prevMetrics?.total_scans ?? 0,
+                mobile_scans: data.mobile_scans ?? prevMetrics?.mobile_scans ?? 0,
+                contact_adds: data.contact_adds ?? prevMetrics?.contact_adds ?? 0,
+                vcf_downloads: data.vcf_downloads ?? prevMetrics?.vcf_downloads ?? 0,
+                recent_scans: Array.isArray(data.recent_scans) 
+                  ? data.recent_scans 
+                  : prevMetrics?.recent_scans ?? []
+              };
+              console.log('📊 Initial metrics state set to:', newMetrics);
+              return newMetrics;
+            });
+            
+            // Exit the retry loop if successful
+            break;
+          } else {
+            console.error('❌ Initial metrics data is empty or invalid:', data);
+            throw new Error('Invalid metrics data received');
+          }
+        } catch (fetchError) {
+          retries++;
+          console.warn(`⚠️ Retry ${retries}/${maxRetries} for initial metrics failed:`, fetchError);
+          
+          if (retries >= maxRetries) {
+            console.error(`❌ All ${maxRetries} retries failed. Giving up.`);
+            throw fetchError;
+          }
+          
+          // Exponential backoff delay
+          const delay = 1000 * Math.pow(2, retries);
+          console.log(`⏱️ Waiting ${delay}ms before retry...`);
+          await new Promise(resolve => setTimeout(resolve, delay));
+        }
       }
     } catch (err) {
       console.error('❌ Failed to fetch initial metrics:', err);
@@ -252,128 +293,123 @@ export const useAnalyticsSSE = ({ vcardId }: UseAnalyticsSSEProps = {}) => {
 
   // Function to connect to SSE
   const connectSSE = useCallback(() => {
+    // Clean up existing connection if any
+    if (eventSourceRef.current) {
+      eventSourceRef.current.close();
+      eventSourceRef.current = null;
+    }
+    
     try {
-      // Close existing connection if any
-      if (eventSourceRef.current) {
-        console.log('🔌 Closing existing SSE connection');
-        eventSourceRef.current.close();
-        eventSourceRef.current = null;
-      }
-
-      // Get the authentication token
-      const token = localStorage.getItem('token');
-      if (!token) {
-        console.error('🔑 No authentication token found');
-        setError(new Error('No authentication token found'));
-        setConnectionStatus(prev => ({
-          ...prev,
-          status: 'error',
-          error: 'No authentication token found'
-        }));
-        navigate('/login');
-        return;
-      }
-
-      // Determine the correct SSE endpoint based on whether we have a vcardId
-      const baseUrl = vcardId 
-        ? `/api/v1/analytics/vcard/${vcardId}/stream`
-        : `/api/v1/analytics/stream`;
-
-      // Ensure we're using the correct API URL and construct the full URL
-      const fullUrl = `${API_URL}${baseUrl}`;
-      const url = new URL(fullUrl);
-      url.searchParams.append('access_token', token);
-
-      console.log('🔑 Token:', token.substring(0, 10) + '...');
-      console.log('🌐 Base API URL:', API_URL);
-      console.log('🔗 Full SSE URL:', url.toString());
-      console.log('🚀 Attempting to connect to SSE stream...');
-      
       setConnectionStatus(prev => ({
         ...prev,
-        status: 'connecting',
-        reconnectAttempt: retryCount + 1
+        status: 'connecting'
       }));
       
-      // Create new EventSource
-      const eventSource = new EventSource(url.toString(), { withCredentials: true });
+      const token = localStorage.getItem('token');
+      if (!token) {
+        throw new Error('Authentication required');
+      }
+      
+      // Determine SSE endpoint based on vcardId
+      const sseEndpoint = vcardId
+        ? `${API_URL}/api/v1/analytics/vcard/${vcardId}/stream`
+        : `${API_URL}/api/v1/analytics/stream`;
+        
+      console.log(`🔌 Connecting to SSE endpoint: ${sseEndpoint}`);
+      
+      // Create URL with auth token in the query parameter
+      const url = new URL(sseEndpoint);
+      url.searchParams.append('token', token);
+      
+      // Create new EventSource with the token in the URL
+      const eventSource = new EventSource(url.toString());
       eventSourceRef.current = eventSource;
       
-      console.log('📡 EventSource created with readyState:', eventSource.readyState);
-      
-      // Add event listeners for different event types
-      eventSource.addEventListener('metrics', handleSSEEvent);
-      eventSource.addEventListener('heartbeat', handleSSEEvent);
-      eventSource.addEventListener('connection', handleSSEEvent);
-      eventSource.addEventListener('disconnection', handleSSEEvent);
-      eventSource.addEventListener('error', handleSSEEvent);
-      
-      // Default message handler (for backward compatibility)
-      eventSource.onmessage = handleSSEEvent;
-      
-      eventSource.onopen = () => {
-        console.log('✅ SSE Connection established successfully');
-        console.log('EventSource readyState after open:', eventSource.readyState);
+      // Set up event listeners
+      eventSource.onopen = (e) => {
+        console.log('🔌 SSE connection opened:', e);
         setConnectionStatus(prev => ({
           ...prev,
           status: 'connected',
-          error: undefined,
-          lastConnected: new Date().toISOString()
+          lastConnected: new Date().toISOString(),
+          error: undefined
         }));
-        setError(null);
-        setRetryCount(0); // Reset retry count on successful connection
-        
-        // Start heartbeat timeout
-        if (heartbeatTimeoutRef.current) {
-          clearTimeout(heartbeatTimeoutRef.current);
-        }
-        heartbeatTimeoutRef.current = setTimeout(() => {
-          console.warn('⚠️ No heartbeat received after connection');
-          reconnectSSE();
-        }, HEARTBEAT_TIMEOUT);
-        
-        // Fetch initial metrics when connection is established
-        fetchInitialMetrics();
+        setIsConnected(true);
+        setRetryCount(0);
       };
-
-      eventSource.onerror = (error) => {
-        console.error('❌ SSE Connection error:', error);
-        console.error('EventSource readyState:', eventSource.readyState);
-        
+      
+      eventSource.onerror = (e) => {
+        console.error('❌ SSE connection error:', e);
         setConnectionStatus(prev => ({
           ...prev,
           status: 'error',
           error: 'Connection error'
         }));
+        setIsConnected(false);
         
-        if (eventSource.readyState === EventSource.CLOSED) {
-          console.log('🔄 Connection closed, attempting to reconnect...');
-          eventSource.close();
-          reconnectSSE();
-        }
+        // Close and attempt to reconnect
+        eventSource.close();
+        eventSourceRef.current = null;
+        reconnectSSE();
       };
+      
+      // Set up message event listeners using addEventListener instead of onmessage
+      eventSource.addEventListener('message', handleSSEEvent);
+      eventSource.addEventListener('metrics', handleSSEEvent);
+      eventSource.addEventListener('heartbeat', handleSSEEvent);
+      eventSource.addEventListener('connection', handleSSEEvent);
+      eventSource.addEventListener('error', handleSSEEvent);
+      
+      // Set heartbeat timeout
+      if (heartbeatTimeoutRef.current) {
+        clearTimeout(heartbeatTimeoutRef.current);
+      }
+      
+      heartbeatTimeoutRef.current = setTimeout(() => {
+        console.warn('⚠️ Initial heartbeat timeout');
+        setConnectionStatus(prev => ({
+          ...prev,
+          status: 'error',
+          error: 'No initial heartbeat received'
+        }));
+        
+        // Close and reconnect
+        eventSource.close();
+        eventSourceRef.current = null;
+        reconnectSSE();
+      }, HEARTBEAT_TIMEOUT);
     } catch (err) {
-      console.error('❌ Error setting up SSE connection:', err);
-      setError(err instanceof Error ? err : new Error('Failed to connect to SSE'));
+      console.error('❌ Error creating SSE connection:', err);
+      setError(err instanceof Error ? err : new Error('Failed to connect to analytics stream'));
       setConnectionStatus(prev => ({
         ...prev,
         status: 'error',
-        error: err instanceof Error ? err.message : 'Unknown error'
+        error: err instanceof Error ? err.message : 'Unknown error',
+        reconnectAttempt: prev.reconnectAttempt + 1
       }));
+      setIsConnected(false);
+      
+      // Schedule reconnect
       reconnectSSE();
     }
-  }, [vcardId, retryCount, handleSSEEvent, reconnectSSE, navigate]);
+  }, [vcardId, handleSSEEvent]);
 
-  // Set up SSE connection on component mount
+  // Setup and cleanup effect
   useEffect(() => {
-    console.log('🔄 Setting up SSE connection with VCard ID:', vcardId);
+    console.log('🚀 Initializing Analytics SSE hook');
+    
+    // First fetch initial metrics
+    fetchInitialMetrics();
+    
+    // Then establish SSE connection
     connectSSE();
     
-    // Clean up on unmount
+    // Cleanup function
     return () => {
-      console.log('🧹 Cleaning up SSE connection');
+      console.log('🧹 Cleaning up Analytics SSE connections');
+      
       if (eventSourceRef.current) {
-        console.log('🔌 Closing SSE connection on unmount');
+        console.log('🔌 Closing SSE connection');
         eventSourceRef.current.close();
         eventSourceRef.current = null;
       }
@@ -388,20 +424,13 @@ export const useAnalyticsSSE = ({ vcardId }: UseAnalyticsSSEProps = {}) => {
         heartbeatTimeoutRef.current = null;
       }
     };
-  }, [vcardId, connectSSE]);
-
-  // Expose a function to manually reconnect
-  const reconnect = useCallback(() => {
-    console.log('🔄 Manual reconnect requested');
-    setRetryCount(0);
-    connectSSE();
-  }, [connectSSE]);
+  }, [vcardId]); // Re-initialize when vcardId changes
 
   return {
     metrics,
     error,
-    isConnected: connectionStatus.status === 'connected',
+    isConnected,
     connectionStatus,
-    reconnect
+    refetch: fetchInitialMetrics
   };
 };

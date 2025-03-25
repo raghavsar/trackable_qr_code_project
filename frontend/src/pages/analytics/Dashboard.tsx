@@ -148,6 +148,40 @@ export default function AnalyticsDashboard() {
             <div className="text-green-400">Realtime Metrics:</div>
             <pre>{JSON.stringify(realtimeMetrics, null, 2)}</pre>
           </div>
+          <div>
+            <div className="text-green-400">Raw SSE data inspection:</div>
+            <button 
+              onClick={() => {
+                fetch(`${debugInfo.apiUrl}/api/v1/analytics/debug`, {
+                  headers: {
+                    'Authorization': `Bearer ${localStorage.getItem('token')}`
+                  }
+                })
+                .then(r => r.json())
+                .then(data => console.log('Debug info:', data))
+                .catch(err => console.error('Debug fetch error:', err));
+              }}
+              className="text-xs bg-blue-500 px-2 py-1 rounded mr-2"
+            >
+              Fetch debug
+            </button>
+            <button 
+              onClick={() => {
+                fetch(`${debugInfo.apiUrl}/test/broadcast`, {
+                  method: 'POST',
+                  headers: {
+                    'Authorization': `Bearer ${localStorage.getItem('token')}`
+                  }
+                })
+                .then(r => r.json())
+                .then(data => console.log('Broadcast triggered:', data))
+                .catch(err => console.error('Broadcast error:', err));
+              }}
+              className="text-xs bg-purple-500 px-2 py-1 rounded"
+            >
+              Test broadcast
+            </button>
+          </div>
         </div>
       </div>
     );
@@ -267,92 +301,86 @@ export default function AnalyticsDashboard() {
           </div> */}
           
           {/* Metrics Cards */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            <Card className="border-l-4 border-l-primary shadow-sm hover:shadow transition-shadow">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
+            <Card>
               <CardHeader className="pb-2">
-                <div className="flex justify-between items-start">
-                  <CardTitle className="text-sm font-medium text-muted-foreground">TOTAL SCANS</CardTitle>
-                  <div className="w-8 h-8 bg-primary/10 rounded-full flex items-center justify-center">
-                    <QrCode className="h-4 w-4 text-primary" />
-                  </div>
-                </div>
+                <CardTitle className="text-sm font-medium">
+                  TOTAL SCANS
+                </CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="text-3xl font-bold">
-                  {realtimeMetrics?.total_scans ?? 0}
+                <div className="flex items-baseline justify-between">
+                  <div className="text-3xl font-bold">
+                    {realtimeMetrics?.total_scans ?? 0}
+                  </div>
+                  <div className="p-1.5 rounded-full bg-muted">
+                    <QrCode className="h-5 w-5" />
+                  </div>
                 </div>
-                <p className="text-xs text-muted-foreground mt-1">
+                <p className="text-xs text-muted-foreground">
                   QR code scans
                 </p>
               </CardContent>
             </Card>
 
-            <Card className="border-l-4 border-l-blue-400 shadow-sm hover:shadow transition-shadow">
+            <Card>
               <CardHeader className="pb-2">
-                <div className="flex justify-between items-start">
-                  <CardTitle className="text-sm font-medium text-muted-foreground">MOBILE SCANS</CardTitle>
-                  <div className="w-8 h-8 bg-blue-50 rounded-full flex items-center justify-center">
-                    <Smartphone className="h-4 w-4 text-blue-500" />
-                  </div>
-                </div>
+                <CardTitle className="text-sm font-medium">
+                  MOBILE SCANS
+                </CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="text-3xl font-bold">
-                  {mobileScansCount}
+                <div className="flex items-baseline justify-between">
+                  <div className="text-3xl font-bold">
+                    {realtimeMetrics?.mobile_scans ?? 0}
+                  </div>
+                  <div className="p-1.5 rounded-full bg-muted">
+                    <Smartphone className="h-5 w-5" />
+                  </div>
                 </div>
-                <p className="text-xs text-muted-foreground mt-1">
+                <p className="text-xs text-muted-foreground">
                   From mobile devices
                 </p>
-                {/* Mobile percentage indicator */}
-                {realtimeMetrics && realtimeMetrics.total_scans > 0 && (
-                  <div className="mt-2">
-                    <div className="w-full bg-gray-200 rounded-full h-1.5">
-                      <div 
-                        className="bg-blue-500 h-1.5 rounded-full" 
-                        style={{width: `${Math.min(100, (mobileScansCount / realtimeMetrics.total_scans) * 100)}%`}}
-                      />
-                    </div>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      {`${Math.round((mobileScansCount / realtimeMetrics.total_scans) * 100)}% of total scans`}
-                    </p>
-                  </div>
-                )}
               </CardContent>
             </Card>
 
-            <Card className="border-l-4 border-l-green-400 shadow-sm hover:shadow transition-shadow">
+            <Card>
               <CardHeader className="pb-2">
-                <div className="flex justify-between items-start">
-                  <CardTitle className="text-sm font-medium text-muted-foreground">CONTACT ADDS</CardTitle>
-                  <div className="w-8 h-8 bg-green-50 rounded-full flex items-center justify-center">
-                    <Users className="h-4 w-4 text-green-500" />
-                  </div>
-                </div>
+                <CardTitle className="text-sm font-medium">
+                  CONTACT ADDS
+                </CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="text-3xl font-bold">
-                  {realtimeMetrics?.contact_adds ?? 0}
+                <div className="flex items-baseline justify-between">
+                  <div className="text-3xl font-bold">
+                    {realtimeMetrics?.contact_adds ?? 0}
+                  </div>
+                  <div className="p-1.5 rounded-full bg-muted">
+                    <Users className="h-5 w-5" />
+                  </div>
                 </div>
-                <p className="text-xs text-muted-foreground mt-1">
+                <p className="text-xs text-muted-foreground">
                   Contacts added to devices
                 </p>
               </CardContent>
             </Card>
 
-            <Card className="border-l-4 border-l-purple-400 shadow-sm hover:shadow transition-shadow">
+            <Card>
               <CardHeader className="pb-2">
-                <div className="flex justify-between items-start">
-                  <CardTitle className="text-sm font-medium text-muted-foreground">VCF DOWNLOADS</CardTitle>
-                  <div className="w-8 h-8 bg-purple-50 rounded-full flex items-center justify-center">
-                    <Download className="h-4 w-4 text-purple-500" />
-                  </div>
-                </div>
+                <CardTitle className="text-sm font-medium">
+                  VCF DOWNLOADS
+                </CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="text-3xl font-bold">
-                  {realtimeMetrics?.vcf_downloads ?? 0}
+                <div className="flex items-baseline justify-between">
+                  <div className="text-3xl font-bold">
+                    {realtimeMetrics?.vcf_downloads ?? 0}
+                  </div>
+                  <div className="p-1.5 rounded-full bg-muted">
+                    <Download className="h-5 w-5" />
+                  </div>
                 </div>
-                <p className="text-xs text-muted-foreground mt-1">
+                <p className="text-xs text-muted-foreground">
                   VCF files downloaded
                 </p>
               </CardContent>
