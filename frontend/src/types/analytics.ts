@@ -28,9 +28,11 @@ export interface AnalyticsMetrics {
   recent_vcf_downloads?: number
   timestamp?: string
   vcard_id?: string
+  type?: 'global' | 'vcard'
   interaction_breakdown?: InteractionBreakdown
   hourly_distribution?: Record<string, number>
   daily_distribution?: Record<string, number>
+  [key: string]: any
 }
 
 export interface HistoricalMetrics {

@@ -38,9 +38,15 @@ export const useAnalyticsSSE = ({ vcardId }: UseAnalyticsSSEProps = {}) => {
   // Function to fetch initial metrics
   const fetchInitialMetrics = async () => {
     try {
-      console.log(`📊 Fetching initial metrics for VCard: ${vcardId}`);
+      // Determine the correct endpoint based on whether we have a vcardId
+      const endpoint = vcardId 
+        ? `${API_URL}/api/v1/analytics/vcard/${vcardId}?timeRange=30d`
+        : `${API_URL}/api/v1/analytics/metrics?timeRange=30d`;
+      
+      console.log(`📊 Fetching initial metrics from endpoint: ${endpoint}`);
+      
       const response = await fetch(
-        `${API_URL}/api/v1/analytics/vcard/${vcardId}?timeRange=30d`,
+        endpoint,
         {
           headers: {
             'Authorization': `Bearer ${localStorage.getItem('token')}`
@@ -54,8 +60,29 @@ export const useAnalyticsSSE = ({ vcardId }: UseAnalyticsSSEProps = {}) => {
       }
       
       const data = await response.json();
-      console.log('📊 Initial metrics data:', data);
-      setMetrics(data);
+      console.log('📊 Initial metrics data received:', data);
+      
+      // Ensure the data is properly structured before setting state
+      if (data) {
+        setMetrics(prevMetrics => {
+          const newMetrics = {
+            ...prevMetrics,
+            ...data,
+            // Explicitly set the critical fields
+            total_scans: data.total_scans ?? prevMetrics?.total_scans ?? 0,
+            mobile_scans: data.mobile_scans ?? prevMetrics?.mobile_scans ?? 0,
+            contact_adds: data.contact_adds ?? prevMetrics?.contact_adds ?? 0,
+            vcf_downloads: data.vcf_downloads ?? prevMetrics?.vcf_downloads ?? 0,
+            recent_scans: Array.isArray(data.recent_scans) 
+              ? data.recent_scans 
+              : prevMetrics?.recent_scans ?? []
+          };
+          console.log('📊 Initial metrics state set to:', newMetrics);
+          return newMetrics;
+        });
+      } else {
+        console.error('❌ Initial metrics data is empty or invalid:', data);
+      }
     } catch (err) {
       console.error('❌ Failed to fetch initial metrics:', err);
       setError(err instanceof Error ? err : new Error('Failed to fetch metrics'));
@@ -88,22 +115,33 @@ export const useAnalyticsSSE = ({ vcardId }: UseAnalyticsSSEProps = {}) => {
       // Handle different event types
       switch (event.type) {
         case 'metrics':
-          const metricsData = JSON.parse(event.data);
-          console.log('📊 Metrics data received:', metricsData);
-          
-          setMetrics(prevMetrics => {
-            if (!prevMetrics) return metricsData;
+          try {
+            const parsedData = JSON.parse(event.data);
+            console.log('📊 Metrics data received (RAW):', event.data);
+            console.log('📊 Metrics data parsed:', parsedData);
             
-            const newMetrics = {
-              ...prevMetrics,
-              ...metricsData,
-              total_scans: metricsData.total_scans ?? prevMetrics.total_scans,
-              contact_adds: metricsData.contact_adds ?? prevMetrics.contact_adds,
-              vcf_downloads: metricsData.vcf_downloads ?? prevMetrics.vcf_downloads,
-              recent_scans: Array.isArray(metricsData.recent_scans) ? metricsData.recent_scans : prevMetrics.recent_scans
-            };
-            return newMetrics;
-          });
+            // Simple extraction of metrics data - no longer looking for nested structures
+            // since we fixed the backend to always send metrics at the root level
+            setMetrics(prevMetrics => {
+              const newMetrics = {
+                ...prevMetrics,
+                ...parsedData,
+                // Ensure critical fields are updated, defaulting to previous values if not in the new data
+                total_scans: parsedData.total_scans ?? prevMetrics?.total_scans ?? 0,
+                mobile_scans: parsedData.mobile_scans ?? prevMetrics?.mobile_scans ?? 0,
+                contact_adds: parsedData.contact_adds ?? prevMetrics?.contact_adds ?? 0,
+                vcf_downloads: parsedData.vcf_downloads ?? prevMetrics?.vcf_downloads ?? 0,
+                recent_scans: Array.isArray(parsedData.recent_scans) 
+                  ? parsedData.recent_scans 
+                  : prevMetrics?.recent_scans ?? []
+              };
+              
+              console.log('📊 New metrics state after update:', newMetrics);
+              return newMetrics;
+            });
+          } catch (err) {
+            console.error('❌ Error parsing metrics data:', err, 'Raw data:', event.data);
+          }
           break;
           
         case 'heartbeat':
@@ -149,24 +187,32 @@ export const useAnalyticsSSE = ({ vcardId }: UseAnalyticsSSEProps = {}) => {
           break;
           
         case 'message':
-          // Default message event (for backward compatibility)
-          const data = JSON.parse(event.data);
-          console.log('📨 Default message event data:', data);
-          
-          // Update metrics state with the new data
-          setMetrics(prevMetrics => {
-            if (!prevMetrics) return data;
+          try {
+            // Default message event (for backward compatibility)
+            const data = JSON.parse(event.data);
+            console.log('📨 Default message event data (RAW):', event.data);
             
-            const newMetrics = {
-              ...prevMetrics,
-              ...data,
-              total_scans: data.total_scans ?? prevMetrics.total_scans,
-              contact_adds: data.contact_adds ?? prevMetrics.contact_adds,
-              vcf_downloads: data.vcf_downloads ?? prevMetrics.vcf_downloads,
-              recent_scans: Array.isArray(data.recent_scans) ? data.recent_scans : prevMetrics.recent_scans
-            };
-            return newMetrics;
-          });
+            // Similar simplified extraction for message events
+            setMetrics(prevMetrics => {
+              const newMetrics = {
+                ...prevMetrics,
+                ...data,
+                // Ensure critical fields are updated
+                total_scans: data.total_scans ?? prevMetrics?.total_scans ?? 0,
+                mobile_scans: data.mobile_scans ?? prevMetrics?.mobile_scans ?? 0,
+                contact_adds: data.contact_adds ?? prevMetrics?.contact_adds ?? 0,
+                vcf_downloads: data.vcf_downloads ?? prevMetrics?.vcf_downloads ?? 0,
+                recent_scans: Array.isArray(data.recent_scans) 
+                  ? data.recent_scans 
+                  : prevMetrics?.recent_scans ?? []
+              };
+              
+              console.log('📨 New metrics state after message update:', newMetrics);
+              return newMetrics;
+            });
+          } catch (err) {
+            console.error('❌ Error parsing message data:', err, 'Raw data:', event.data);
+          }
           break;
           
         default:
@@ -228,13 +274,13 @@ export const useAnalyticsSSE = ({ vcardId }: UseAnalyticsSSEProps = {}) => {
         return;
       }
 
-      // Create new connection with full URL
+      // Determine the correct SSE endpoint based on whether we have a vcardId
       const baseUrl = vcardId 
-        ? `/analytics/vcard/${vcardId}/stream`
-        : `/analytics/stream`;
+        ? `/api/v1/analytics/vcard/${vcardId}/stream`
+        : `/api/v1/analytics/stream`;
 
       // Ensure we're using the correct API URL and construct the full URL
-      const fullUrl = `${API_URL}/api/v1${baseUrl}`;
+      const fullUrl = `${API_URL}${baseUrl}`;
       const url = new URL(fullUrl);
       url.searchParams.append('access_token', token);
 

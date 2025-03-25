@@ -32,7 +32,7 @@ import httpx
 
 from shared.models import PyObjectId, ScanTrackingEvent
 from app.database import get_database
-from app.redis_store import get_redis_client, RedisStore
+from app.redis_store import get_redis_client, RedisStore, DummyRedisClient
 from app.config import settings
 
 if TYPE_CHECKING:
@@ -99,7 +99,14 @@ class SSEManager:
         
         # Send latest metrics immediately
         if self._latest_metrics:
-            await queue.put(self._latest_metrics)
+            # Wrap metrics in the correct event structure
+            await queue.put({
+                "event": "metrics",
+                "data": self._latest_metrics
+            })
+            logger.info(f"Sent initial metrics to new global client: {client_id}")
+        else:
+            logger.warning(f"No initial metrics available for new global client: {client_id}")
             
         # Send connection established event
         await queue.put({
@@ -127,7 +134,14 @@ class SSEManager:
         
         # Send latest metrics immediately
         if vcard_id in self._vcard_metrics:
-            await queue.put(self._vcard_metrics[vcard_id])
+            # Wrap metrics in the correct event structure
+            await queue.put({
+                "event": "metrics",
+                "data": self._vcard_metrics[vcard_id]
+            })
+            logger.info(f"Sent initial metrics to new VCard client: {client_id}")
+        else:
+            logger.warning(f"No initial metrics available for new VCard client: {client_id} for VCard {vcard_id}")
         
         # Send connection established event
         await queue.put({
@@ -295,12 +309,14 @@ async def startup_db_client():
         app.mongodb = app.mongodb_client.get_default_database()
         logger.info(f"Connected to MongoDB: {settings.MONGODB_URL}")
         
-        # Initialize Redis client
+        # Initialize Redis client - use DummyRedisClient since Redis is not implemented
         try:
-            app.redis_client = await get_redis_client()
-            logger.info("Connected to Redis successfully")
+            # Just use DummyRedisClient directly since Redis is not implemented
+            from app.redis_store import DummyRedisClient
+            app.redis_client = DummyRedisClient()
+            logger.warning("Redis is not implemented - using DummyRedisClient for graceful fallback")
         except Exception as redis_error:
-            logger.error(f"Failed to connect to Redis: {redis_error}")
+            logger.error(f"Failed to initialize Redis client: {redis_error}")
             logger.warning("Redis features will be disabled")
             app.redis_client = None
         
@@ -311,6 +327,15 @@ async def startup_db_client():
         # Initialize HTTP client for outgoing requests
         app.http_client = httpx.AsyncClient()
         logger.info("HTTP client initialized")
+        
+        # Preload initial metrics data into SSE manager
+        try:
+            initial_metrics = await get_real_time_metrics(app.mongodb)
+            logger.info(f"Preloaded initial global metrics: {initial_metrics}")
+            await app.state.sse_manager.broadcast_global(initial_metrics)
+            logger.info("Initial metrics loaded into SSE manager")
+        except Exception as metrics_error:
+            logger.error(f"Failed to preload initial metrics: {metrics_error}")
         
         logger.info("Analytics service started successfully")
     except Exception as e:
@@ -398,50 +423,135 @@ async def stream_metrics(
     request: Request,
     db: Any = Depends(get_database)
 ) -> EventSourceResponse:
-    """Generate SSE with real-time metrics"""
+    """Generate SSE with real-time metrics using queue-based approach for enhanced reliability"""
     client_id = str(uuid.uuid4())
     logger.info(f"New global SSE connection: {client_id}")
     
+    # Create a queue for this client
+    client_queue = asyncio.Queue()
+    
+    # Register connection info
+    connection_time = datetime.utcnow().isoformat()
+    client_info = {
+        "client_id": client_id,
+        "connected_at": connection_time,
+        "type": "global",
+        "user_agent": request.headers.get("user-agent", ""),
+        "ip": request.client.host if request.client else "unknown",
+        "queue": client_queue
+    }
+    
+    # Ensure SSE manager exists
+    if not hasattr(app.state, "sse_manager"):
+        app.state.sse_manager = SSEManager()
+        logger.info("Created new SSE Manager instance")
+    
+    # Register client with SSE manager
+    await app.state.sse_manager.register_global(client_id, client_queue, client_info)
+    
+    # Define event generator that listens to the queue
     async def event_generator():
         try:
-            # Get initial metrics
+            # Send immediate global metrics
             metrics = await get_real_time_metrics(db)
-            logger.info(f"Initial metrics: {metrics}")
+            logger.info(f"Sending initial global metrics")
             
-            # Send initial metrics
+            # Send metrics directly in the root with a type field
+            metrics["type"] = "global"
+            metrics["timestamp"] = datetime.utcnow().isoformat()
+            
             yield {
                 "event": "metrics",
                 "data": json.dumps(metrics)
             }
             
-            # Send periodic updates
-            while True:
-                # Get updated metrics
-                metrics = await get_real_time_metrics(db)
-                logger.info(f"Updated metrics: {metrics}")
-                
-                # Send metrics event
-                yield {
-                    "event": "metrics",
-                    "data": json.dumps(metrics)
-                }
-                
-                # Wait before next update
-                await asyncio.sleep(5)
-                
-        except Exception as e:
-            logger.error(f"Error in event generator: {e}")
-            logger.error(traceback.format_exc())
-            
-            # Send error event
+            # Send a connection event
             yield {
-                "event": "error",
+                "event": "connection",
                 "data": json.dumps({
-                    "error": str(e)
+                    "client_id": client_id,
+                    "connected_at": connection_time,
+                    "status": "connected"
                 })
             }
             
-    return EventSourceResponse(event_generator())
+            # Start listening for events from the queue
+            while True:
+                try:
+                    # Wait for new events with a timeout
+                    event = await asyncio.wait_for(client_queue.get(), timeout=30)
+                    
+                    # Check if it's a close event
+                    if event.get("event") == "close":
+                        logger.info(f"Received close event for global client {client_id}")
+                        break
+                        
+                    # Otherwise yield the event to the client
+                    if isinstance(event.get("data"), dict):
+                        yield {
+                            "event": event.get("event", "message"),
+                            "data": json.dumps(event.get("data"))
+                        }
+                    else:
+                        yield {
+                            "event": event.get("event", "message"),
+                            "data": event.get("data", "")
+                        }
+                    
+                except asyncio.TimeoutError:
+                    # Send keep-alive heartbeat event
+                    logger.debug(f"Sending keep-alive for global client {client_id}")
+                    yield {
+                        "event": "heartbeat",
+                        "data": json.dumps({
+                            "timestamp": datetime.utcnow().isoformat()
+                        })
+                    }
+                except Exception as e:
+                    logger.error(f"Error in event generator for global client {client_id}: {e}")
+                    logger.error(traceback.format_exc())
+                    
+                    # Send error event to client
+                    yield {
+                        "event": "error",
+                        "data": json.dumps({
+                            "error": str(e)
+                        })
+                    }
+                    
+                    # Try to wait and continue
+                    await asyncio.sleep(5)
+            
+        except Exception as outer_e:
+            logger.error(f"Fatal error in event generator for global client {client_id}: {outer_e}")
+            logger.error(traceback.format_exc())
+            
+            # Clean up client registration
+            app.state.sse_manager.remove_client(client_id)
+            
+            # Send final error to client
+            yield {
+                "event": "error",
+                "data": json.dumps({
+                    "error": str(outer_e),
+                    "fatal": True
+                })
+            }
+        finally:
+            # Clean up when the generator exits (client disconnected)
+            logger.info(f"Global client disconnected: {client_id}")
+            app.state.sse_manager.remove_client(client_id)
+    
+    return EventSourceResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+            "Access-Control-Allow-Origin": "*"
+        }
+    )
 
 @app.get("/api/v1/analytics/vcard/{vcard_id}/stream")
 async def stream_vcard_metrics(
@@ -468,7 +578,6 @@ async def stream_vcard_metrics(
         "queue": client_queue
     }
     
-    # Validate VCard exists
     try:
         # Try as ObjectId first
         vcard = None
@@ -508,12 +617,6 @@ async def stream_vcard_metrics(
             
         await app.state.sse_manager.register_vcard(vcard_id, client_id, client_queue, client_info)
         
-        # Define disconnect handler
-        @request.on_disconnect
-        async def disconnect():
-            logger.info(f"Client disconnected: {client_id} for VCard {vcard_id}")
-            app.state.sse_manager.remove_client(client_id)
-        
         # Define event generator that listens to the queue
         async def event_generator():
             try:
@@ -521,20 +624,31 @@ async def stream_vcard_metrics(
                 metrics = await get_vcard_real_time_metrics(db, vcard_id)
                 logger.info(f"Sending initial metrics for VCard {vcard_id}")
                 
+                # Add type and vcard_id at the root level
+                metrics["type"] = "vcard"
+                metrics["vcard_id"] = vcard_id
+                metrics["timestamp"] = datetime.utcnow().isoformat()
+                
                 yield {
                     "event": "metrics",
+                    "data": json.dumps(metrics)
+                }
+                
+                # Send a connection event
+                yield {
+                    "event": "connection",
                     "data": json.dumps({
-                        "type": "vcard",
+                        "client_id": client_id,
                         "vcard_id": vcard_id,
-                        "metrics": metrics,
-                        "timestamp": datetime.utcnow().isoformat()
+                        "connected_at": connection_time,
+                        "status": "connected"
                     })
                 }
                 
                 # Start listening for events from the queue
                 while True:
                     try:
-                        # Wait for new events with a timeout
+                        # Wait for events with a timeout
                         event = await asyncio.wait_for(client_queue.get(), timeout=30)
                         
                         # Check if it's a close event
@@ -555,10 +669,10 @@ async def stream_vcard_metrics(
                             }
                         
                     except asyncio.TimeoutError:
-                        # Send keep-alive ping event
+                        # Send keep-alive heartbeat event
                         logger.debug(f"Sending keep-alive for client {client_id}")
                         yield {
-                            "event": "ping",
+                            "event": "heartbeat",
                             "data": json.dumps({
                                 "timestamp": datetime.utcnow().isoformat()
                             })
@@ -593,6 +707,10 @@ async def stream_vcard_metrics(
                         "fatal": True
                     })
                 }
+            finally:
+                # Clean up when the generator exits (client disconnected)
+                logger.info(f"Client disconnected: {client_id} for VCard {vcard_id}")
+                app.state.sse_manager.remove_client(client_id)
         
         return EventSourceResponse(
             event_generator(),
@@ -602,10 +720,7 @@ async def stream_vcard_metrics(
                 "Connection": "keep-alive",
                 "Content-Type": "text/event-stream",
                 "X-Accel-Buffering": "no",
-                "Access-Control-Allow-Origin": "*",
-                "Access-Control-Allow-Credentials": "true",
-                "Access-Control-Allow-Methods": "GET, OPTIONS",
-                "Access-Control-Allow-Headers": "Content-Type, Authorization"
+                "Access-Control-Allow-Origin": "*"
             }
         )
         
@@ -613,11 +728,14 @@ async def stream_vcard_metrics(
         logger.error(f"Error setting up SSE for VCard {vcard_id}, client {client_id}: {e}")
         logger.error(traceback.format_exc())
         
+        # Capture the error in local variable to avoid scope issues
+        error_message = str(e)
+        
         async def error_generator():
             yield {
                 "event": "error",
                 "data": json.dumps({
-                    "error": str(e),
+                    "error": error_message,
                     "fatal": True
                 })
             }
@@ -629,7 +747,7 @@ async def stream_vcard_metrics(
                 "Cache-Control": "no-cache",
                 "Connection": "keep-alive",
                 "Content-Type": "text/event-stream",
-                "X-Accel-Buffering": "no", 
+                "X-Accel-Buffering": "no" 
             }
         )
 
@@ -777,6 +895,24 @@ async def health_check(request: Request) -> Dict[str, str]:
         except Exception as e:
             logger.warning(f"Redis health check failed: {e}")
             redis_status = "unhealthy"
+        
+        # Check Redis - we know it's using DummyRedisClient since Redis is not implemented
+        redis_status = "dummy_client"
+        try:
+            # Import the DummyRedisClient directly
+            from app.redis_store import DummyRedisClient
+            
+            # Just note we're using the dummy client
+            if isinstance(app.redis_client, DummyRedisClient):
+                logger.info("Redis health check: using DummyRedisClient")
+                redis_status = "using_dummy_client"
+            else:
+                # If Redis is somehow configured, try to ping it
+                await app.redis_client.ping()
+                redis_status = "healthy"
+        except Exception as e:
+            logger.warning(f"Redis health check note: {e}")
+            redis_status = "not_implemented"
         
         return {
             "status": "healthy",
@@ -1009,18 +1145,40 @@ async def record_scan_event(
         inserted_id = str(result.inserted_id)
         logger.info(f"Scan event stored with ID: {inserted_id}")
         
-        # Update Redis real-time metrics if Redis is available
-        if hasattr(app, "redis_client") and app.redis_client is not None:
-            try:
-                redis_store = RedisStore(os.getenv("REDIS_URL", "redis://redis:6379/0"))
-                await redis_store.record_scan(scan_record)
-                logger.info("Scan event recorded in Redis")
-            except Exception as redis_error:
-                logger.error(f"Redis error: {redis_error}")
-                logger.error(traceback.format_exc())
+        # Try to record in Redis, but don't worry if it fails since Redis is not implemented
+        try:
+            # Get a Redis client (will be DummyRedisClient since Redis is not implemented)
+            redis_client = await get_redis_client()
+            
+            # Create a RedisStore that uses the DummyRedisClient
+            redis_store = RedisStore(os.getenv("REDIS_URL", "redis://redis:6379/0"))
+            
+            # This won't actually store the scan, but will log what would have happened
+            await redis_store.record_scan(scan_record)
+            logger.debug("Scan event processed by Redis handler (using dummy client)")
+        except Exception as redis_error:
+            # Just log at debug level since Redis isn't expected to work
+            logger.debug(f"Redis operation skipped: {redis_error}")
         
-        # Broadcast to SSE clients if vcard_id is present and SSE manager exists
-        if scan_data.vcard_id and hasattr(app.state, "sse_manager"):
+        # Ensure SSE manager exists
+        if not hasattr(app.state, "sse_manager"):
+            app.state.sse_manager = SSEManager()
+            logger.info("Created new SSE Manager instance for broadcast")
+        
+        # STEP 1: Always update global metrics and broadcast to global clients
+        try:
+            # Get updated global metrics
+            global_metrics = await get_real_time_metrics(db)
+            
+            # Broadcast to global clients
+            await app.state.sse_manager.broadcast_global(global_metrics)
+            logger.info("Broadcast scan event to global clients")
+        except Exception as global_sse_error:
+            logger.error(f"Error broadcasting to global SSE clients: {global_sse_error}")
+            logger.error(traceback.format_exc())
+        
+        # STEP 2: If vcard_id is present, also broadcast to VCard-specific clients
+        if scan_data.vcard_id:
             try:
                 # Get updated metrics for this VCard
                 vcard_metrics = await get_vcard_real_time_metrics(db, scan_data.vcard_id)
@@ -1056,6 +1214,15 @@ async def track_scan(
     try:
         logger.info(f"Tracking scan for ID: {tracking_id}")
         
+        # Check if SSE manager exists
+        has_sse_manager = hasattr(app.state, "sse_manager")
+        logger.info(f"SSE manager exists: {has_sse_manager}")
+        
+        if has_sse_manager:
+            # Log client counts for debugging
+            client_counts = app.state.sse_manager.get_client_count()
+            logger.info(f"Connected clients: {client_counts}")
+        
         # Try to get user agent and parse device info
         user_agent = request.headers.get("user-agent", "")
         
@@ -1080,6 +1247,7 @@ async def track_scan(
         )
         
         # Use background task to record scan to avoid blocking the response
+        logger.info(f"Adding background task to record scan event for tracking ID: {tracking_id}")
         background_tasks.add_task(record_scan_event, scan_data, db)
         
         # Return a 204 No Content response to ensure fast response time
@@ -1089,3 +1257,279 @@ async def track_scan(
         logger.error(traceback.format_exc())
         # Return 204 anyway to avoid client errors
         return Response(status_code=204)
+
+@app.get("/api/v1/analytics/metrics/vcard/{vcard_id}/daily")
+async def get_vcard_daily_metrics(
+    vcard_id: str,
+    start_date: str,
+    end_date: str,
+    db: Any = Depends(get_database)
+) -> Dict[str, Any]:
+    """Get daily analytics metrics for a specific VCard and date range"""
+    try:
+        logger.info(f"Fetching daily metrics for VCard {vcard_id} from {start_date} to {end_date}")
+        
+        # Parse dates
+        try:
+            start = parse_datetime(start_date)
+            end = parse_datetime(end_date)
+            # Add one day to end date to include the end date in the range
+            end = end + timedelta(days=1)
+        except ValueError as e:
+            logger.error(f"Invalid date format: {e}")
+            return JSONResponse(
+                status_code=400,
+                content={"error": f"Invalid date format: {str(e)}"}
+            )
+            
+        # Query scan events grouped by date for this specific VCard
+        pipeline = [
+            {
+                "$match": {
+                    "vcard_id": vcard_id,
+                    "timestamp": {
+                        "$gte": start,
+                        "$lt": end
+                    }
+                }
+            },
+            {
+                "$group": {
+                    "_id": {
+                        "date": {"$dateToString": {"format": "%Y-%m-%d", "date": "$timestamp"}},
+                        "action_type": "$action_type",
+                        "is_mobile": {"$ifNull": [{"$getField": {"field": "is_mobile", "input": "$device_info"}}, False]}
+                    },
+                    "count": {"$sum": 1}
+                }
+            },
+            {
+                "$group": {
+                    "_id": "$_id.date",
+                    "metrics": {
+                        "$push": {
+                            "action_type": "$_id.action_type",
+                            "is_mobile": "$_id.is_mobile",
+                            "count": "$count"
+                        }
+                    }
+                }
+            },
+            {
+                "$sort": {"_id": 1}
+            }
+        ]
+        
+        # Execute aggregation
+        result = await db.scan_events.aggregate(pipeline).to_list(None)
+        
+        # Process results into daily metrics
+        daily_metrics = []
+        for day in result:
+            date = day["_id"]
+            metrics = day["metrics"]
+            
+            # Initialize counters
+            total_scans = 0
+            mobile_scans = 0
+            desktop_scans = 0
+            contact_adds = 0
+            vcf_downloads = 0
+            
+            # Process metrics
+            for metric in metrics:
+                count = metric["count"]
+                action = metric["action_type"]
+                is_mobile = metric["is_mobile"]
+                
+                # Update counters
+                if action == "scan":
+                    total_scans += count
+                    if is_mobile:
+                        mobile_scans += count
+                    else:
+                        desktop_scans += count
+                elif action == "contact_add":
+                    contact_adds += count
+                elif action == "vcf_download":
+                    vcf_downloads += count
+            
+            # Add daily metric
+            daily_metrics.append({
+                "date": date,
+                "total_scans": total_scans,
+                "mobile_scans": mobile_scans,
+                "desktop_scans": desktop_scans,
+                "contact_adds": contact_adds,
+                "vcf_downloads": vcf_downloads
+            })
+        
+        # If no data, return empty array
+        if not daily_metrics:
+            logger.info(f"No daily metrics found for VCard {vcard_id} in the specified date range")
+            return {"metrics": []}
+            
+        logger.info(f"Found {len(daily_metrics)} days of metrics for VCard {vcard_id}")
+        return {"metrics": daily_metrics}
+        
+    except Exception as e:
+        logger.error(f"Error getting VCard daily metrics: {e}")
+        logger.error(traceback.format_exc())
+        return JSONResponse(
+            status_code=500,
+            content={"error": f"Error getting VCard daily metrics: {str(e)}"}
+        )
+
+@app.get("/api/v1/analytics/metrics")
+async def get_analytics_metrics(
+    timeRange: str = "30d",
+    request: Request = None,
+    db: Any = Depends(get_database)
+) -> Dict[str, Any]:
+    """Get global analytics metrics"""
+    logger.info(f"Getting global analytics metrics with timeRange {timeRange}")
+    
+    try:
+        # Get real-time metrics
+        real_time_metrics = await get_real_time_metrics(db)
+        
+        # Get historical data based on timeRange
+        # Parse timeRange (e.g., "30d" for 30 days)
+        days = 30  # Default
+        if timeRange.endswith("d"):
+            try:
+                days = int(timeRange[:-1])
+            except ValueError:
+                logger.warning(f"Invalid timeRange format: {timeRange}, using default 30 days")
+        
+        end_date = datetime.utcnow()
+        start_date = end_date - timedelta(days=days)
+        
+        # Format dates for query
+        start_date_str = start_date.strftime("%Y-%m-%d")
+        end_date_str = end_date.strftime("%Y-%m-%d")
+        
+        # Add type identifier 
+        real_time_metrics["type"] = "global"
+        
+        # Combine real-time and historical data
+        result = {
+            **real_time_metrics,
+            "timeRange": timeRange,
+            "start_date": start_date_str,
+            "end_date": end_date_str
+        }
+        
+        return result
+    except Exception as e:
+        logger.error(f"Error getting global analytics metrics: {e}")
+        logger.error(traceback.format_exc())
+        return {
+            "error": str(e),
+            "timeRange": timeRange,
+            "total_scans": 0,
+            "contact_adds": 0,
+            "vcf_downloads": 0,
+            "mobile_scans": 0,
+            "desktop_scans": 0,
+            "recent_scans": [],
+            "type": "global"
+        }
+
+@app.post("/api/v1/analytics/test/broadcast")
+@app.post("/test/broadcast")  # Add a simpler route for easier access
+async def test_broadcast(
+    request: Request,
+    db: Any = Depends(get_database)
+) -> Dict[str, Any]:
+    """Test endpoint to trigger manual broadcast of analytics updates for debugging"""
+    try:
+        logger.info("Manual broadcast triggered via test endpoint")
+        logger.info(f"Request path: {request.url.path}")
+        logger.info(f"Request headers: {request.headers}")
+        
+        # Ensure SSE manager exists
+        if not hasattr(app.state, "sse_manager"):
+            app.state.sse_manager = SSEManager()
+            logger.info("Created new SSE Manager instance for test broadcast")
+            
+        # Get client counts
+        client_counts = app.state.sse_manager.get_client_count()
+        logger.info(f"Current clients: {client_counts}")
+        
+        # Get updated global metrics
+        global_metrics = await get_real_time_metrics(db)
+        logger.info(f"Broadcasting global metrics: {global_metrics}")
+        
+        # Broadcast to global clients
+        await app.state.sse_manager.broadcast_global(global_metrics)
+        logger.info("Test broadcast sent to global clients")
+        
+        return {
+            "success": True,
+            "message": "Test broadcast sent successfully",
+            "client_counts": client_counts,
+            "metrics": global_metrics
+        }
+    except Exception as e:
+        logger.error(f"Error in test broadcast: {e}")
+        logger.error(traceback.format_exc())
+        return JSONResponse(
+            status_code=500,
+            content={
+                "success": False,
+                "error": str(e)
+            }
+        )
+
+@app.get("/api/v1/analytics/debug")
+@app.get("/debug")  # Simpler route for direct access
+async def debug_analytics(
+    request: Request,
+    db: Any = Depends(get_database)
+) -> Dict[str, Any]:
+    """Debug endpoint to check the current state of the analytics service"""
+    logger.info("Debug endpoint called")
+    
+    try:
+        # Check if SSE manager exists
+        has_sse_manager = hasattr(app.state, "sse_manager")
+        
+        # Get client info
+        client_counts = {}
+        latest_metrics = {}
+        vcard_metrics_count = 0
+        
+        if has_sse_manager:
+            client_counts = app.state.sse_manager.get_client_count()
+            latest_metrics = app.state.sse_manager._latest_metrics
+            vcard_metrics_count = len(app.state.sse_manager._vcard_metrics)
+        
+        # Get real-time metrics to check data consistency
+        current_metrics = await get_real_time_metrics(db)
+        
+        # Get some stats from the database
+        total_scans = await db.scan_events.count_documents({"action_type": "scan"})
+        total_events = await db.scan_events.count_documents({})
+        
+        # Return all debug info
+        return {
+            "server_time": datetime.utcnow().isoformat(),
+            "has_sse_manager": has_sse_manager,
+            "client_counts": client_counts,
+            "metrics_cached": bool(latest_metrics),
+            "latest_metrics_timestamp": latest_metrics.get("timestamp", "not_available"),
+            "vcard_metrics_count": vcard_metrics_count,
+            "current_metrics": current_metrics,
+            "database_stats": {
+                "total_scans": total_scans,
+                "total_events": total_events
+            }
+        }
+    except Exception as e:
+        logger.error(f"Error in debug endpoint: {e}")
+        logger.error(traceback.format_exc())
+        return {
+            "error": str(e),
+            "server_time": datetime.utcnow().isoformat()
+        }

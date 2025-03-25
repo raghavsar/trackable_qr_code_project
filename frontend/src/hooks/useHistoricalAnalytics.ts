@@ -6,12 +6,13 @@ const API_URL = import.meta.env.VITE_API_URL;
 interface UseHistoricalAnalyticsProps {
   startDate: string;
   endDate: string;
+  vcardId?: string; // Optional VCard ID for filtering data
 }
 
 const MAX_RETRIES = 3;
 const RETRY_DELAY = 2000; // 2 seconds
 
-export const useHistoricalAnalytics = ({ startDate, endDate }: UseHistoricalAnalyticsProps) => {
+export const useHistoricalAnalytics = ({ startDate, endDate, vcardId }: UseHistoricalAnalyticsProps) => {
   const [metrics, setMetrics] = useState<DailyMetric[]>([]);
   const [error, setError] = useState<Error | null>(null);
   const [loading, setLoading] = useState(false);
@@ -19,8 +20,15 @@ export const useHistoricalAnalytics = ({ startDate, endDate }: UseHistoricalAnal
 
   const fetchWithRetry = useCallback(async (retryCount = 0): Promise<DailyMetric[]> => {
     try {
+      // Construct the URL based on whether we have a vcardId or not
+      const apiUrl = vcardId 
+        ? `${API_URL}/api/v1/analytics/metrics/vcard/${vcardId}/daily?start_date=${startDate}&end_date=${endDate}`
+        : `${API_URL}/api/v1/analytics/metrics/daily?start_date=${startDate}&end_date=${endDate}`;
+
+      console.log(`Fetching historical analytics data from: ${apiUrl}`);
+      
       const response = await fetch(
-        `${API_URL}/api/v1/analytics/metrics/daily?start_date=${startDate}&end_date=${endDate}`,
+        apiUrl,
         {
           headers: {
             'Accept': 'application/json',
@@ -66,7 +74,7 @@ export const useHistoricalAnalytics = ({ startDate, endDate }: UseHistoricalAnal
       }
       throw err;
     }
-  }, [startDate, endDate]);
+  }, [startDate, endDate, vcardId]);
 
   useEffect(() => {
     const fetchData = async () => {

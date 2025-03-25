@@ -489,6 +489,11 @@ async def delete_qr_code(qr_id: str, request: Request, user_id: str = Depends(ve
     return await forward_request(request, settings.QR_SERVICE_URL, f"/qrcodes/{qr_id}", user_id)
 
 # Analytics routes
+@app.get("/api/v1/analytics/metrics")
+async def get_global_metrics(request: Request, user_id: str = Depends(verify_token)):
+    """Get global analytics metrics."""
+    return await forward_request(request, settings.ANALYTICS_SERVICE_URL, "/api/v1/analytics/metrics", user_id)
+
 @app.get("/api/v1/analytics/vcard/{vcard_id}")
 async def get_vcard_analytics(vcard_id: str, request: Request, user_id: str = Depends(verify_token)):
     return await forward_request(request, settings.ANALYTICS_SERVICE_URL, f"/api/v1/analytics/vcard/{vcard_id}", user_id)
@@ -523,11 +528,61 @@ async def record_scan(request: Request):
         )
 
 @app.get("/api/v1/analytics/stream")
-async def analytics_stream(request: Request):
+async def analytics_stream(
+    request: Request,
+    access_token: str = None
+):
     """Stream real-time analytics metrics."""
     try:
+        logger.info("SSE request received for global analytics")
+        logger.info(f"Request headers: {dict(request.headers)}")
+        logger.info(f"Query params: {dict(request.query_params)}")
+        
+        # Get token from query param or header
+        if not access_token:
+            auth_header = request.headers.get("Authorization")
+            if auth_header and auth_header.startswith("Bearer "):
+                access_token = auth_header.replace("Bearer ", "")
+                logger.info("Token extracted from Authorization header")
+            else:
+                # Try to get from query params
+                access_token = request.query_params.get("access_token")
+                if access_token:
+                    logger.info("Token extracted from query parameters")
+                else:
+                    logger.warning("No token found in Authorization header or query parameters")
+                    raise HTTPException(
+                        status_code=status.HTTP_401_UNAUTHORIZED,
+                        detail="Authentication token is required"
+                    )
+        else:
+            logger.info("Token provided as function parameter")
+        
+        # Verify the token
+        try:
+            payload = jwt.decode(
+                access_token,
+                settings.JWT_SECRET,
+                algorithms=[settings.JWT_ALGORITHM]
+            )
+            user_id = payload.get("sub")
+            if not user_id:
+                logger.error("Invalid token payload: missing 'sub' field")
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Invalid authentication token"
+                )
+            logger.info(f"Token verified successfully for user {user_id}")
+        except jwt.JWTError as e:
+            logger.error(f"JWT verification error: {str(e)}")
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid authentication token"
+            )
+
         # Forward the SSE request to analytics service
         analytics_url = f"{settings.ANALYTICS_SERVICE_URL}/api/v1/analytics/stream"
+        logger.info(f"Forwarding SSE request to: {analytics_url}")
         
         # Create client session with proper headers
         async with httpx.AsyncClient() as client:
@@ -536,10 +591,13 @@ async def analytics_stream(request: Request):
                 headers={
                     'Accept': 'text/event-stream',
                     'Cache-Control': 'no-cache',
-                    'Connection': 'keep-alive'
+                    'Connection': 'keep-alive',
+                    'Authorization': f'Bearer {access_token}'
                 },
                 timeout=None  # No timeout for SSE
             )
+            
+            logger.info(f"Analytics service response status: {response.status_code}")
             
             return StreamingResponse(
                 response.aiter_bytes(),
@@ -552,11 +610,14 @@ async def analytics_stream(request: Request):
                     'Access-Control-Allow-Origin': '*'
                 }
             )
+    except HTTPException as e:
+        logger.error(f"HTTP exception in analytics_stream: {str(e)}")
+        raise e
     except Exception as e:
-        logger.error(f"Error streaming analytics: {str(e)}")
+        logger.error(f"Error streaming global analytics: {str(e)}")
         raise HTTPException(
             status_code=500,
-            detail=f"Error streaming analytics: {str(e)}"
+            detail=f"Error streaming global analytics: {str(e)}"
         )
 
 @app.get("/api/v1/analytics/qr/{qr_id}/stream")

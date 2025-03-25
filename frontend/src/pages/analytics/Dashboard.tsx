@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { 
   XAxis, YAxis, CartesianGrid, Tooltip, 
-  ResponsiveContainer, AreaChart, Area 
+  ResponsiveContainer, AreaChart, Area, Legend 
 } from "recharts"
 import { 
   QrCode, Smartphone, Loader2, RefreshCw, ArrowLeft,
@@ -23,6 +23,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 export default function AnalyticsDashboard() {
   const [timeRange, setTimeRange] = useState('30');
   const [activeTab, setActiveTab] = useState("overview");
+  const [showDebug, setShowDebug] = useState(false);
   const [debugInfo, setDebugInfo] = useState<{ apiUrl: string, token: string }>({
     apiUrl: '',
     token: ''
@@ -32,7 +33,7 @@ export default function AnalyticsDashboard() {
   const startDate = format(subDays(new Date(), parseInt(timeRange)), 'yyyy-MM-dd');
   
   // Get real-time metrics with SSE
-  const { metrics: realtimeMetrics, error: realtimeError, isConnected } = useAnalyticsSSE();
+  const { metrics: realtimeMetrics, error: realtimeError, isConnected, connectionStatus } = useAnalyticsSSE();
   
   // Get historical data
   const { 
@@ -55,8 +56,39 @@ export default function AnalyticsDashboard() {
       token
     });
     
-    console.log('Realtime metrics:', realtimeMetrics);
-  }, [realtimeMetrics]);
+    console.log('Analytics Dashboard - Realtime metrics received:', realtimeMetrics);
+    console.log('Analytics Dashboard - Connection status:', isConnected);
+    
+    if (realtimeMetrics) {
+      console.log('Analytics counts:', {
+        total_scans: realtimeMetrics.total_scans,
+        mobile_scans: realtimeMetrics.mobile_scans,
+        contact_adds: realtimeMetrics.contact_adds,
+        vcf_downloads: realtimeMetrics.vcf_downloads
+      });
+      
+      // Log the complete metrics object keys and types
+      console.log('Analytics metrics keys:', Object.keys(realtimeMetrics));
+      console.log('Analytics metrics types:', Object.keys(realtimeMetrics).reduce<Record<string, string>>((acc, key) => {
+        // Use type assertion to tell TypeScript we know what we're doing
+        const metrics = realtimeMetrics as Record<string, any>;
+        acc[key] = typeof metrics[key];
+        
+        if (Array.isArray(metrics[key])) {
+          acc[key] += ' (array)';
+          if (metrics[key].length > 0) {
+            acc[key] += ` - first item type: ${typeof metrics[key][0]}`;
+          }
+        }
+        return acc;
+      }, {}));
+    } else {
+      console.log('No realtime metrics data available yet');
+    }
+    
+    // Debug historical metrics
+    console.log('Historical metrics data:', historicalMetrics);
+  }, [realtimeMetrics, isConnected, historicalMetrics]);
 
   const navigate = useNavigate();
 
@@ -83,6 +115,43 @@ export default function AnalyticsDashboard() {
       <span>{isConnected ? 'Connected' : 'Connecting...'}</span>
     </Badge>
   );
+
+  // Add this new debug toggle function
+  const toggleDebug = useCallback(() => {
+    setShowDebug(prev => !prev);
+  }, []);
+
+  // After the connection status renderer function, add this debug panel renderer:
+  const renderDebugPanel = () => {
+    if (!showDebug) return null;
+    
+    return (
+      <div className="fixed bottom-4 right-4 z-50 bg-black/90 text-white p-4 rounded-lg shadow-lg max-w-lg max-h-[80vh] overflow-auto">
+        <div className="flex justify-between items-center mb-2">
+          <h3 className="font-medium">Debug Information</h3>
+          <button onClick={toggleDebug} className="text-xs bg-red-500 px-2 py-1 rounded">Close</button>
+        </div>
+        <div className="text-xs font-mono space-y-2">
+          <div>
+            <div className="text-green-400">API URL:</div>
+            <div>{debugInfo.apiUrl}</div>
+          </div>
+          <div>
+            <div className="text-green-400">Auth Token:</div>
+            <div>{debugInfo.token}</div>
+          </div>
+          <div>
+            <div className="text-green-400">Connection Status:</div>
+            <div>{JSON.stringify(connectionStatus, null, 2)}</div>
+          </div>
+          <div>
+            <div className="text-green-400">Realtime Metrics:</div>
+            <pre>{JSON.stringify(realtimeMetrics, null, 2)}</pre>
+          </div>
+        </div>
+      </div>
+    );
+  };
 
   // Loading state
   if (historyLoading && !realtimeMetrics) {
@@ -234,6 +303,20 @@ export default function AnalyticsDashboard() {
                 <p className="text-xs text-muted-foreground mt-1">
                   From mobile devices
                 </p>
+                {/* Mobile percentage indicator */}
+                {realtimeMetrics && realtimeMetrics.total_scans > 0 && (
+                  <div className="mt-2">
+                    <div className="w-full bg-gray-200 rounded-full h-1.5">
+                      <div 
+                        className="bg-blue-500 h-1.5 rounded-full" 
+                        style={{width: `${Math.min(100, (mobileScansCount / realtimeMetrics.total_scans) * 100)}%`}}
+                      />
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {`${Math.round((mobileScansCount / realtimeMetrics.total_scans) * 100)}% of total scans`}
+                    </p>
+                  </div>
+                )}
               </CardContent>
             </Card>
 
@@ -295,8 +378,8 @@ export default function AnalyticsDashboard() {
                           <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0.1}/>
                         </linearGradient>
                         <linearGradient id="colorMobile" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="hsl(var(--secondary))" stopOpacity={0.8}/>
-                          <stop offset="95%" stopColor="hsl(var(--secondary))" stopOpacity={0.1}/>
+                          <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.9}/>
+                          <stop offset="95%" stopColor="#3b82f6" stopOpacity={0.2}/>
                         </linearGradient>
                       </defs>
                       <CartesianGrid strokeDasharray="3 3" vertical={false} className="stroke-muted" />
@@ -327,6 +410,13 @@ export default function AnalyticsDashboard() {
                         }}
                         labelFormatter={(label) => format(new Date(label), 'MMMM dd, yyyy')}
                       />
+                      <Legend 
+                        verticalAlign="top" 
+                        height={36} 
+                        formatter={(value) => {
+                          return value === 'total_scans' ? 'Total Scans' : 'Mobile Scans';
+                        }}
+                      />
                       <Area 
                         type="monotone" 
                         dataKey="total_scans" 
@@ -339,10 +429,10 @@ export default function AnalyticsDashboard() {
                       <Area 
                         type="monotone" 
                         dataKey="mobile_scans" 
-                        stroke="hsl(var(--secondary))" 
-                        fillOpacity={0.5}
+                        stroke="#3b82f6" 
+                        fillOpacity={0.6}
                         fill="url(#colorMobile)"
-                        strokeWidth={2}
+                        strokeWidth={3}
                         name="mobile_scans"
                       />
                     </AreaChart>
@@ -468,6 +558,22 @@ export default function AnalyticsDashboard() {
           </Card>
         </TabsContent>
       </Tabs>
+
+      {/* Add before the final closing div */}
+      {renderDebugPanel()}
+      
+      {/* Debug toggle button */}
+      <button 
+        onClick={toggleDebug}
+        className="fixed bottom-4 left-4 bg-gray-800 text-white p-2 rounded-full shadow-lg opacity-70 hover:opacity-100 z-50"
+        title="Toggle debug panel"
+      >
+        <span className="sr-only">Debug</span>
+        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+        </svg>
+      </button>
     </div>
   );
 }
