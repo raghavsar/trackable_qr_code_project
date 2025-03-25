@@ -30,10 +30,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from '../ui/select'
-import { qrService } from '@/services/api'
+import { qrService, analyticsService } from '@/services/api'
 import { toast } from 'react-hot-toast'
 import { useNavigate } from 'react-router-dom'
 import { Badge } from "../ui/badge"
+import { useAnalyticsSSE } from '@/hooks/useAnalyticsSSE'
 
 interface QRCode {
   id: string
@@ -75,6 +76,64 @@ const QRCodeList = React.forwardRef<{ refreshList: () => void }, QRCodeListProps
   const [filter, setFilter] = useState('all')
   const [sortBy, setSortBy] = useState('newest')
   const [searchQuery, setSearchQuery] = useState('')
+  const [analyticsData, setAnalyticsData] = useState<Record<string, number>>({})
+
+  // Subscribe to real-time analytics updates
+  const { metrics: realtimeMetrics, isConnected } = useAnalyticsSSE({})
+
+  // Update analytics data when realtime metrics change
+  useEffect(() => {
+    if (realtimeMetrics) {
+      // Get individual VCard analytics for each QR code
+      const fetchVCardAnalytics = async () => {
+        try {
+          const newAnalyticsData: Record<string, number> = {}
+          
+          for (const qrCode of qrCodes) {
+            if (qrCode.vcard_id) {
+              const vCardMetrics = await analyticsService.getVCardAnalytics(qrCode.vcard_id, '30')
+              if (vCardMetrics) {
+                newAnalyticsData[qrCode.vcard_id] = vCardMetrics.total_scans
+              }
+            }
+          }
+          
+          setAnalyticsData(newAnalyticsData)
+        } catch (error) {
+          console.error('Failed to fetch VCard analytics:', error)
+        }
+      }
+      
+      fetchVCardAnalytics()
+    }
+  }, [realtimeMetrics, qrCodes])
+
+  // Fetch initial analytics data
+  useEffect(() => {
+    const fetchAnalytics = async () => {
+      try {
+        const newAnalyticsData: Record<string, number> = {}
+        
+        // Fetch analytics for each VCard
+        for (const qrCode of qrCodes) {
+          if (qrCode.vcard_id) {
+            const vCardMetrics = await analyticsService.getVCardAnalytics(qrCode.vcard_id, '30')
+            if (vCardMetrics) {
+              newAnalyticsData[qrCode.vcard_id] = vCardMetrics.total_scans
+            }
+          }
+        }
+        
+        setAnalyticsData(newAnalyticsData)
+      } catch (error) {
+        console.error('Failed to fetch analytics:', error)
+      }
+    }
+    
+    if (qrCodes.length > 0) {
+      fetchAnalytics()
+    }
+  }, [qrCodes])
 
   useEffect(() => {
     fetchQRCodes()
@@ -273,7 +332,7 @@ const QRCodeList = React.forwardRef<{ refreshList: () => void }, QRCodeListProps
                 </Badge>
                 <Badge className="bg-primary/10 text-primary border-0 flex items-center gap-1">
                   <Scan className="h-3 w-3" />
-                  {qr.total_scans} scans
+                  {analyticsData[qr.vcard_id] || qr.total_scans || 0} scans
                 </Badge>
               </div>
             </CardHeader>
