@@ -19,6 +19,45 @@ import { useNavigate } from 'react-router-dom'
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { qrService } from '@/services/api';
+import type { VCardResponse } from '@/types/api';
+
+// Component to display VCard owner name
+const VCardOwnerDisplay = ({ vcardId }: { vcardId: string }) => {
+  const [ownerName, setOwnerName] = useState<string>(`VCard: ${vcardId}`);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchVCardOwner = async () => {
+      try {
+        // Only attempt to fetch if we have a valid MongoDB ObjectId (24 hex chars)
+        if (vcardId && /^[0-9a-fA-F]{24}$/.test(vcardId)) {
+          const vcard = await qrService.getVCard(vcardId);
+          if (vcard && vcard.first_name && vcard.last_name) {
+            setOwnerName(`${vcard.first_name} ${vcard.last_name}`);
+          }
+        }
+      } catch (error) {
+        console.error('Error fetching VCard owner:', error);
+        // Keep the fallback VCard ID format if we can't fetch the name
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchVCardOwner();
+  }, [vcardId]);
+
+  if (isLoading) {
+    return <span className="text-xs text-muted-foreground animate-pulse">Loading...</span>;
+  }
+
+  return (
+    <span className="text-xs text-muted-foreground truncate max-w-xs">
+      {ownerName}
+    </span>
+  );
+};
 
 export default function AnalyticsDashboard() {
   const [timeRange, setTimeRange] = useState('30');
@@ -584,7 +623,7 @@ export default function AnalyticsDashboard() {
                                 )}
                               </div>
                               <p className="text-xs text-muted-foreground truncate max-w-xs">
-                                {scan.vcard_id ? `VCard: ${scan.vcard_id}` : 'System-wide scan'}
+                                {scan.vcard_id ? <VCardOwnerDisplay vcardId={scan.vcard_id} /> : 'System-wide scan'}
                               </p>
                             </div>
                             
