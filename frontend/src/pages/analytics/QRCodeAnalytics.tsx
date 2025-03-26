@@ -28,6 +28,7 @@ import { useHistoricalAnalytics } from '@/hooks/useHistoricalAnalytics'
 import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import React from 'react'
 
 const analyticsService = new AnalyticsService()
 
@@ -39,7 +40,6 @@ export default function VCardAnalytics() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState("overview")
-  const [showChart, setShowChart] = useState(true) // Always show chart
   
   // Get real-time updates with VCard ID
   const { metrics: realtimeMetrics, isConnected } = useAnalyticsSSE({ vcardId: id })
@@ -75,51 +75,161 @@ export default function VCardAnalytics() {
     // This assumes the backend API is filtering by VCard ID when used with the specific vcard_id parameter
     return {
       ...metric,
-      // Ensure we have the right metrics even if they're zero
-      total_scans: metric.total_scans || 0,
-      mobile_scans: metric.mobile_scans || 0
+      // Don't use || operator which treats 0 as falsy
+      total_scans: metric.total_scans !== undefined ? metric.total_scans : 0,
+      mobile_scans: metric.mobile_scans !== undefined ? metric.mobile_scans : 0
     };
   });
 
-  // Generate mock data based on current metrics values
-  const getMockData = () => {
+  // Generate mock data based on current metrics values - ONLY for development/fallback
+  const getMockData = useCallback(() => {
     const mockData = [];
     const today = new Date();
-    const metricsTotal = metrics.total_scans || 4; // Ensure we have at least some value
-    const metricsMobile = metrics.mobile_scans || metricsTotal; // Default all to mobile if we have no data
+    // Don't use fallback minimum value - use actual metrics
+    const metricsTotal = metrics.total_scans;
+    const metricsMobile = metrics.mobile_scans;
     
-    // If we have real total scans/mobile scans, distribute them across the days
-    const daysInRange = parseInt(timeRange);
-    const avgScansPerDay = Math.max(1, Math.ceil(metricsTotal / daysInRange));
-    const avgMobileScansPerDay = Math.max(0, Math.ceil(metricsMobile / daysInRange));
-    
-    for (let i = 0; i < daysInRange; i++) {
-      const date = subDays(today, daysInRange - 1 - i);
-      
-      // Create a realistic distribution with higher values closer to today
-      const factor = 0.5 + (i / daysInRange) * 0.5; // Values increase as we get closer to today
-      const dayTotal = Math.round(avgScansPerDay * factor);
-      const dayMobile = Math.min(dayTotal, Math.round(avgMobileScansPerDay * factor));
-      
-      mockData.push({
-        date: format(date, 'yyyy-MM-dd'),
-        total_scans: dayTotal,
-        mobile_scans: dayMobile,
-        desktop_scans: dayTotal - dayMobile,
-        contact_adds: Math.round(dayTotal * 0.2), // 20% of scans result in contact adds
-        vcf_downloads: Math.round(dayTotal * 0.25) // 25% of scans result in VCF downloads
-      });
+    // If no scans, return empty array
+    if (metricsTotal === 0) {
+      return [];
     }
     
-    console.log('Generated mock data:', mockData);
+    // Create a single data point for today
+    mockData.push({
+      date: format(today, 'yyyy-MM-dd'),
+      total_scans: metricsTotal,
+      mobile_scans: metricsMobile,
+      desktop_scans: metricsTotal - metricsMobile,
+      contact_adds: 0,
+      vcf_downloads: 0
+    });
+    
+    console.log('Generated simplified mock data with actual values:', mockData);
     return mockData;
-  };
+  }, [metrics.total_scans, metrics.mobile_scans]);
 
-  // Always use either real data or mock data
-  // Simplify this logic to ensure we always have data to show
-  const chartData = processedHistoricalMetrics.length > 0 
-    ? processedHistoricalMetrics 
-    : getMockData();
+  // Improved chart data processing that's more robust and eliminates unnecessary re-renders
+  const chartData = React.useMemo(() => {
+    // First, generate a complete date range for the selected time period
+    // This ensures we have entries for every day in the range, even if there were no scans
+    const endDate = new Date();
+    const startDate = subDays(endDate, parseInt(timeRange));
+    const dateRange: string[] = [];
+    
+    let currentDate = startDate;
+    while (currentDate <= endDate) {
+      dateRange.push(format(currentDate, 'yyyy-MM-dd'));
+      currentDate = addDays(currentDate, 1);
+    }
+    
+    // Create a map with all dates initialized to zero
+    const dataMap: Record<string, {
+      date: string;
+      total_scans: number;
+      mobile_scans: number;
+      desktop_scans: number;
+    }> = {};
+    
+    // Initialize all dates with zero values
+    dateRange.forEach(date => {
+      dataMap[date] = {
+        date,
+        total_scans: 0,
+        mobile_scans: 0,
+        desktop_scans: 0
+      };
+    });
+    
+    // Merge historical metrics data (primary source of truth)
+    processedHistoricalMetrics.forEach(metric => {
+      // Only include metrics that fall within our date range
+      if (dataMap[metric.date]) {
+        dataMap[metric.date] = {
+          date: metric.date,
+          total_scans: metric.total_scans || 0,
+          mobile_scans: metric.mobile_scans || 0,
+          desktop_scans: (metric.total_scans || 0) - (metric.mobile_scans || 0)
+        };
+      }
+    });
+    
+    // For the current day, we might need to supplement with real-time data
+    // as the historical metrics might not have the latest scans
+    const today = format(new Date(), 'yyyy-MM-dd');
+    
+    // Count today's scans from real-time data
+    let todayTotalFromRecentScans = 0;
+    let todayMobileFromRecentScans = 0;
+    
+    // Process recent scans for today only
+    metrics.recent_scans.forEach(scan => {
+      const scanDate = format(new Date(scan.timestamp), 'yyyy-MM-dd');
+      
+      // Only count actual scan events for today
+      if (scan.action_type === 'scan' && scanDate === today) {
+        todayTotalFromRecentScans++;
+        if (scan.device_info?.is_mobile) {
+          todayMobileFromRecentScans++;
+        }
+      }
+    });
+    
+    // If we have more recent scans than what's in historical data for today,
+    // update today's values (this handles real-time updates better)
+    if (todayTotalFromRecentScans > dataMap[today]?.total_scans) {
+      dataMap[today] = {
+        date: today,
+        total_scans: todayTotalFromRecentScans,
+        mobile_scans: todayMobileFromRecentScans,
+        desktop_scans: todayTotalFromRecentScans - todayMobileFromRecentScans
+      };
+    }
+    
+    // If we have no historical or recent data but we do have totals,
+    // at least show something in the chart for today
+    if (Object.values(dataMap).every(d => d.total_scans === 0) && metrics.total_scans > 0) {
+      dataMap[today] = {
+        date: today,
+        total_scans: metrics.total_scans,
+        mobile_scans: metrics.mobile_scans,
+        desktop_scans: metrics.total_scans - metrics.mobile_scans
+      };
+    }
+    
+    // Convert to an array and sort by date
+    const dataArray = Object.values(dataMap).sort((a, b) => 
+      new Date(a.date).getTime() - new Date(b.date).getTime()
+    );
+    
+    console.log('Generated chart data with complete date range:', {
+      timeRange,
+      datesInRange: dateRange.length,
+      dataPointsGenerated: dataArray.length,
+      hasData: dataArray.some(d => d.total_scans > 0)
+    });
+    
+    return dataArray;
+  }, [timeRange, processedHistoricalMetrics, metrics.total_scans, metrics.mobile_scans, metrics.recent_scans]);
+  
+  // Refresh historical data when real-time metrics change
+  useEffect(() => {
+    if (realtimeMetrics?.total_scans !== undefined) {
+      // Only refresh if there's a meaningful change in scan count
+      if (realtimeMetrics.total_scans > metrics.total_scans) {
+        console.log('Real-time metrics increased, refreshing historical data', {
+          'realtimeMetrics.total_scans': realtimeMetrics.total_scans,
+          'previous total_scans': metrics.total_scans
+        });
+        
+        // Use a short delay to ensure backend has processed the latest data
+        const timer = setTimeout(() => {
+          refetchHistory();
+        }, 1500);
+        
+        return () => clearTimeout(timer);
+      }
+    }
+  }, [realtimeMetrics?.total_scans, metrics.total_scans, refetchHistory]);
 
   const fetchAnalytics = async () => {
     if (!id) return
@@ -131,12 +241,6 @@ export default function VCardAnalytics() {
       const data = await analyticsService.getVCardAnalytics(id, timeRange)
       console.log('Received analytics data:', data)
       setAnalytics(data)
-      
-      // Force the chart to show by ensuring we have data
-      if (!data.scan_history || data.scan_history.length === 0) {
-        console.log('No scan history data available, using mock data instead');
-        // We'll use the mock data which is generated elsewhere
-      }
     } catch (err) {
       console.error('Failed to fetch analytics:', err)
       setError(err instanceof Error ? err.message : 'Failed to fetch analytics')
@@ -381,76 +485,91 @@ export default function VCardAnalytics() {
             </CardHeader>
             <CardContent className="p-6">
               <div className="h-[350px]">
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart 
-                    data={chartData}
-                    margin={{ top: 20, right: 20, left: 0, bottom: 0 }}
-                  >
-                    <defs>
-                      <linearGradient id="colorTotal" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.8}/>
-                        <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0.1}/>
-                      </linearGradient>
-                      <linearGradient id="colorMobile" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.9}/>
-                        <stop offset="95%" stopColor="#3b82f6" stopOpacity={0.2}/>
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} className="stroke-muted" />
-                    <XAxis 
-                      dataKey="date" 
-                      className="text-xs text-muted-foreground"
-                      tickLine={false}
-                      axisLine={false}
-                      tickFormatter={(value) => format(new Date(value), 'MMM dd')}
-                      padding={{ left: 20, right: 20 }}
-                    />
-                    <YAxis 
-                      className="text-xs text-muted-foreground" 
-                      tickLine={false} 
-                      axisLine={false}
-                      width={30}
-                    />
-                    <Tooltip 
-                      contentStyle={{
-                        backgroundColor: 'hsl(var(--background))',
-                        borderColor: 'hsl(var(--border))',
-                        borderRadius: '8px',
-                        boxShadow: '0 4px 12px rgba(0, 0, 0, 0.1)'
-                      }}
-                      formatter={(value, name) => {
-                        const label = name === 'total_scans' ? 'Total Scans' : 'Mobile Scans';
-                        return [value, label];
-                      }}
-                      labelFormatter={(label) => format(new Date(label), 'MMMM dd, yyyy')}
-                    />
-                    <Legend 
-                      verticalAlign="top" 
-                      height={36} 
-                      formatter={(value) => {
-                        return value === 'total_scans' ? 'Total Scans' : 'Mobile Scans';
-                      }}
-                    />
-                    <Area 
-                      type="monotone" 
-                      dataKey="total_scans" 
-                      stroke="hsl(var(--primary))" 
-                      fillOpacity={1}
-                      fill="url(#colorTotal)"
-                      strokeWidth={2}
-                      name="total_scans"
-                    />
-                    <Area 
-                      type="monotone" 
-                      dataKey="mobile_scans" 
-                      stroke="#3b82f6" 
-                      fillOpacity={0.6}
-                      fill="url(#colorMobile)"
-                      strokeWidth={3}
-                      name="mobile_scans"
-                    />
-                  </AreaChart>
-                </ResponsiveContainer>
+                {chartData.length > 0 ? (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart 
+                      data={chartData}
+                      margin={{ top: 20, right: 20, left: 0, bottom: 0 }}
+                      key={`vcard-analytics-chart-${id}-${timeRange}`}
+                    >
+                      <defs>
+                        <linearGradient id="colorTotal" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.8}/>
+                          <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0.1}/>
+                        </linearGradient>
+                        <linearGradient id="colorMobile" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.9}/>
+                          <stop offset="95%" stopColor="#3b82f6" stopOpacity={0.2}/>
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} className="stroke-muted" />
+                      <XAxis 
+                        dataKey="date" 
+                        className="text-xs text-muted-foreground"
+                        tickLine={false}
+                        axisLine={false}
+                        tickFormatter={(value) => format(new Date(value), 'MMM dd')}
+                        padding={{ left: 20, right: 20 }}
+                      />
+                      <YAxis 
+                        className="text-xs text-muted-foreground" 
+                        tickLine={false} 
+                        axisLine={false}
+                        width={30}
+                        allowDecimals={false}
+                        domain={[0, 'auto']}
+                      />
+                      <Tooltip 
+                        contentStyle={{
+                          backgroundColor: 'hsl(var(--background))',
+                          borderColor: 'hsl(var(--border))',
+                          borderRadius: '8px',
+                          boxShadow: '0 4px 12px rgba(0, 0, 0, 0.1)'
+                        }}
+                        formatter={(value, name) => {
+                          const label = name === 'total_scans' ? 'Total Scans' : 'Mobile Scans';
+                          return [value, label];
+                        }}
+                        labelFormatter={(label) => format(new Date(label), 'MMMM dd, yyyy')}
+                      />
+                      <Legend 
+                        verticalAlign="top" 
+                        height={36} 
+                        formatter={(value) => {
+                          return value === 'total_scans' ? 'Total Scans' : 'Mobile Scans';
+                        }}
+                      />
+                      <Area 
+                        type="monotone" 
+                        dataKey="total_scans" 
+                        stroke="hsl(var(--primary))" 
+                        fillOpacity={1}
+                        fill="url(#colorTotal)"
+                        strokeWidth={2}
+                        name="total_scans"
+                      />
+                      <Area 
+                        type="monotone" 
+                        dataKey="mobile_scans" 
+                        stroke="#3b82f6" 
+                        fillOpacity={0.6}
+                        fill="url(#colorMobile)"
+                        strokeWidth={3}
+                        name="mobile_scans"
+                      />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <div className="flex flex-col items-center justify-center h-full">
+                    <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mb-4">
+                      <TrendingUp className="h-8 w-8 text-muted-foreground" />
+                    </div>
+                    <h3 className="text-lg font-medium mb-2">No Scan Activity</h3>
+                    <p className="text-sm text-muted-foreground max-w-md text-center">
+                      When your QR code is scanned, activity will appear here. Check back after sharing your VCard.
+                    </p>
+                  </div>
+                )}
               </div>
             </CardContent>
           </Card>
