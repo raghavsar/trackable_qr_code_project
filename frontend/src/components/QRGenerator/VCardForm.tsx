@@ -20,6 +20,7 @@ import QRCodeEditor from './QRCodeEditor'
 import QRCodeList from './QRCodeList'
 import { Badge } from "../ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../ui/tabs"
+import { PhoneNumberInput } from '../PhoneNumberInput'
 import { 
   AlertDialog,
   AlertDialogAction, 
@@ -35,7 +36,7 @@ interface FormData {
   first_name: string
   last_name: string
   email: string
-  mobile_number: string | undefined
+  mobile_number: string
   work_number: string | undefined
   profile_picture: string | undefined
   company: string | undefined
@@ -163,7 +164,7 @@ export default function VCardForm() {
     first_name: "",
     last_name: "",
     email: "",
-    mobile_number: undefined,
+    mobile_number: "",
     work_number: undefined,
     profile_picture: undefined,
     company: undefined,
@@ -198,12 +199,20 @@ export default function VCardForm() {
         }
       }))
     } else {
-      setFormData(prev => ({ 
-        ...prev, 
-        [name]: value || undefined 
+      setFormData(prev => ({
+        ...prev,
+        [name]: value || undefined
       }))
     }
   }
+
+  // Add handler for phone number changes
+  const handlePhoneChange = (field: 'mobile_number' | 'work_number') => (value: string) => {
+    setFormData(prev => ({
+      ...prev,
+      [field]: value || undefined
+    }));
+  };
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -304,7 +313,10 @@ export default function VCardForm() {
   }
 
   const isFormComplete = () => {
-    return formData.first_name && formData.last_name && formData.email;
+    return formData.first_name && 
+           formData.last_name && 
+           formData.email && 
+           formData.mobile_number;
   };
 
   return (
@@ -386,7 +398,7 @@ export default function VCardForm() {
                           <div className="space-y-1.5">
                             <Label htmlFor="first_name" className="text-sm font-medium">
                               <User className="h-3.5 w-3.5 inline mr-1.5" />
-                              First name
+                              First name <span className="text-red-500">*</span>
                             </Label>
                             <Input
                               id="first_name"
@@ -401,7 +413,7 @@ export default function VCardForm() {
                           <div className="space-y-1.5">
                             <Label htmlFor="last_name" className="text-sm font-medium">
                               <User className="h-3.5 w-3.5 inline mr-1.5" />
-                              Last name
+                              Last name <span className="text-red-500">*</span>
                             </Label>
                             <Input
                               id="last_name"
@@ -418,7 +430,7 @@ export default function VCardForm() {
                         <div className="space-y-1.5">
                           <Label htmlFor="email" className="text-sm font-medium">
                             <Mail className="h-3.5 w-3.5 inline mr-1.5" />
-                            Email
+                            Email <span className="text-red-500">*</span>
                           </Label>
                           <Input
                             id="email"
@@ -542,28 +554,29 @@ export default function VCardForm() {
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                             <div className="space-y-1.5">
                               <Label htmlFor="mobile_number" className="text-sm font-medium">
-                                Mobile Number
+                                Mobile Number <span className="text-red-500">*</span>
                               </Label>
-                              <Input
+                              <PhoneNumberInput
                                 id="mobile_number"
                                 name="mobile_number"
                                 value={formData.mobile_number || ""}
-                                onChange={handleInputChange}
-                                placeholder="+1 (555) 123-4567"
-                                className="border-muted-foreground/20"
+                                onChange={handlePhoneChange('mobile_number')}
+                                placeholder="XXXXX XXXXX"
+                                required
+                                hideLabel
                               />
                             </div>
                             <div className="space-y-1.5">
                               <Label htmlFor="work_number" className="text-sm font-medium">
                                 Work Number
                               </Label>
-                              <Input
+                              <PhoneNumberInput
                                 id="work_number"
                                 name="work_number"
                                 value={formData.work_number || ""}
-                                onChange={handleInputChange}
-                                placeholder="+1 (555) 987-6543"
-                                className="border-muted-foreground/20"
+                                onChange={handlePhoneChange('work_number')}
+                                placeholder="XXXXX XXXXX"
+                                hideLabel
                               />
                             </div>
                           </div>
