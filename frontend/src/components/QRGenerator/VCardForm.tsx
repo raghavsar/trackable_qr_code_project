@@ -269,23 +269,89 @@ export default function VCardForm() {
     }
   }
 
-  const handleShare = async (qrCode: QRCodeResponse) => {
+  const handleShare = async (qrCode: QRCodeResponse | any) => {
     try {
-      const redirectUrl = `${window.location.origin}/r/${qrCode.vcard_id}`;
+      // Log the QR code object to help with debugging
+      console.log('Share attempt with QR code data:', qrCode);
       
-      if (navigator.share) {
-        await navigator.share({
-          title: 'My Digital Business Card',
-          text: 'Check out my digital business card!',
-          url: redirectUrl
-        });
+      // Get vcard_id from either root level or metadata
+      const vcardId = qrCode.vcard_id || (qrCode.metadata && qrCode.metadata.vcard_id);
+      
+      console.log('Extracted vCard ID:', vcardId);
+      
+      if (!vcardId) {
+        console.error('Missing vCard ID in QR code data');
+        toast.error('Cannot share: Missing VCard ID');
+        return;
+      }
+      
+      // Determine name to use in share message
+      const name = qrCode.metadata?.vcard_name || 
+                   `${qrCode.metadata?.firstName || ''} ${qrCode.metadata?.lastName || ''}`.trim() ||
+                   'Digital Business Card';
+      
+      const redirectUrl = `${window.location.origin}/r/${vcardId}`;
+      console.log('Share URL:', redirectUrl);
+      
+      // Check if Web Share API is available and supported
+      if (navigator.share && typeof navigator.share === 'function') {
+        console.log('Using Web Share API');
+        try {
+          await navigator.share({
+            title: `${name}'s Digital Business Card`,
+            text: `Check out ${name}'s digital business card!`,
+            url: redirectUrl
+          });
+          toast.success('Shared successfully!');
+        } catch (shareError) {
+          console.error('Web Share API error:', shareError);
+          
+          // If share was aborted by user, don't show error
+          if (shareError instanceof Error && shareError.name === 'AbortError') {
+            console.log('Share canceled by user');
+            return;
+          }
+          
+          // Fallback to clipboard if Web Share API fails
+          await fallbackToClipboard(redirectUrl);
+        }
       } else {
-        await navigator.clipboard.writeText(redirectUrl);
-        toast.success('Link copied to clipboard!');
+        console.log('Web Share API not supported, using clipboard fallback');
+        await fallbackToClipboard(redirectUrl);
       }
     } catch (error) {
-      console.error('Error sharing:', error);
+      console.error('Error in handleShare:', error);
       toast.error('Failed to share QR code');
+    }
+  };
+  
+  // Helper function for clipboard fallback
+  const fallbackToClipboard = async (url: string) => {
+    try {
+      await navigator.clipboard.writeText(url);
+      toast.success('Link copied to clipboard!');
+    } catch (clipboardError) {
+      console.error('Clipboard write error:', clipboardError);
+      
+      // Use the execCommand fallback for older browsers
+      try {
+        const textArea = document.createElement('textarea');
+        textArea.value = url;
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+        const successful = document.execCommand('copy');
+        document.body.removeChild(textArea);
+        
+        if (successful) {
+          toast.success('Link copied to clipboard!');
+        } else {
+          throw new Error('execCommand copy failed');
+        }
+      } catch (legacyError) {
+        console.error('Legacy clipboard fallback error:', legacyError);
+        toast.error('Could not copy to clipboard. Please copy the URL manually.');
+      }
     }
   };
 

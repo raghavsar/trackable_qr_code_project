@@ -265,9 +265,15 @@ export default function VCardAnalytics() {
   // Format date for display
   const formatDate = (dateString: string) => {
     try {
-      return format(new Date(dateString), 'MMM dd, yyyy, h:mm a')
+      // Create a date object from the timestamp
+      const date = new Date(dateString);
+      
+      // Format in IST (UTC+5:30)
+      // First convert to UTC string, then apply IST offset manually
+      const istDate = new Date(date.getTime() + (5.5 * 60 * 60 * 1000));
+      return format(istDate, 'MMM dd, yyyy, h:mm a').replace(/\bam\b/g, 'AM').replace(/\bpm\b/g, 'PM') + ' IST';
     } catch (e) {
-      return dateString
+      return dateString;
     }
   }
 
@@ -508,7 +514,11 @@ export default function VCardAnalytics() {
                         className="text-xs text-muted-foreground"
                         tickLine={false}
                         axisLine={false}
-                        tickFormatter={(value) => format(new Date(value), 'MMM dd')}
+                        tickFormatter={(value) => {
+                          const date = new Date(value);
+                          const istDate = new Date(date.getTime() + (5.5 * 60 * 60 * 1000));
+                          return format(istDate, 'MMM dd');
+                        }}
                         padding={{ left: 20, right: 20 }}
                       />
                       <YAxis 
@@ -530,7 +540,11 @@ export default function VCardAnalytics() {
                           const label = name === 'total_scans' ? 'Total Scans' : 'Mobile Scans';
                           return [value, label];
                         }}
-                        labelFormatter={(label) => format(new Date(label), 'MMMM dd, yyyy')}
+                        labelFormatter={(label) => {
+                          const date = new Date(label);
+                          const istDate = new Date(date.getTime() + (5.5 * 60 * 60 * 1000));
+                          return format(istDate, 'MMMM dd, yyyy') + ' (IST)';
+                        }}
                       />
                       <Legend 
                         verticalAlign="top" 
@@ -658,11 +672,10 @@ export default function VCardAnalytics() {
                             </div>
                             
                             <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                              <Calendar className="h-3 w-3" />
-                              <span>{format(new Date(scan.timestamp), 'MMM dd, yyyy')}</span>
-                              <span className="mx-1">•</span>
-                              <Clock className="h-3 w-3" />
-                              <span>{format(new Date(scan.timestamp), 'h:mm a')}</span>
+                              <Calendar className="h-3 w-3 mr-1" />
+                              <span className="bg-muted/50 px-2 py-1 rounded-md">
+                                {formatDate(scan.timestamp)}
+                              </span>
                             </div>
                           </div>
                         </div>

@@ -211,7 +211,7 @@ def generate_vcard_content(vcard_data: dict) -> str:
     
     # Add email with proper TYPE parameter - just "TYPE=WORK" to make it display as "Email"
     if vcard_data.get('email'):
-        vcard_lines.append(f"EMAIL;TYPE=WORK:{vcard_data['email']}")
+        vcard_lines.append(f"EMAIL;TYPE=INTERNET:{vcard_data['email']}")
         logger.info(f"Added email: {vcard_data['email']}")
     
     # Add organization and title with improved formatting

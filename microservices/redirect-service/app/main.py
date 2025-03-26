@@ -76,7 +76,7 @@ def generate_vcard(vcard_data: dict) -> bytes:
     
     # Add email with proper TYPE parameter - just "TYPE=WORK" to display as "Email"
     if vcard_data.get('email'):
-        vcard_lines.append(f"EMAIL;TYPE=WORK:{vcard_data['email']}")
+        vcard_lines.append(f"EMAIL;TYPE=INTERNET:{vcard_data['email']}")
     
     # Add organization and title
     if vcard_data.get('company'):
