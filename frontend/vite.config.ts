@@ -37,6 +37,10 @@ export default defineConfig(({ mode }) => {
         host: '192.168.7.60'
       }
     },
+    preview: {
+      port: 5173,
+      host: '192.168.7.60'
+    },
     define: {
       // Expose env variables to your app
       __API_URL__: JSON.stringify(env.VITE_API_URL),
