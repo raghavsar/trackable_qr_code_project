@@ -17,7 +17,7 @@ export default defineConfig(({ mode }) => {
     },
     server: {
       port: 5173,
-      host: '192.168.7.154',
+      host: '192.168.7.60',
       // allowedHosts: ['e032-14-97-193-22.ngrok-free.app'],
       proxy: {
         '/api': {
@@ -34,7 +34,7 @@ export default defineConfig(({ mode }) => {
       },
       cors: true,
       hmr: {
-        host: '192.168.7.154'
+        host: '192.168.7.60'
       }
     },
     define: {
