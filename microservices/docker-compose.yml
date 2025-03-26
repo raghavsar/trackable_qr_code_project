@@ -103,6 +103,10 @@ services:
       - JWT_SECRET=e0a345b2f4c8767d5dcaf4cd3c58526369fca63d6f40cb64350420c22f697581f68b048343720d3ecb16cceae9539ac9377ce356586dae83b09177f0c6514391
       - JWT_ALGORITHM=HS256
       - JWT_EXPIRATION=3600
+      - ENABLE_GOOGLE_AUTH=false
+      - GOOGLE_CLIENT_ID=dummy_client_id
+      - GOOGLE_CLIENT_SECRET=dummy_client_secret
+      - GOOGLE_REDIRECT_URI=http://localhost:5173/auth/google/callback
 
   vcard-service:
     build:

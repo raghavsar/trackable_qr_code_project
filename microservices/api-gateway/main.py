@@ -27,12 +27,25 @@ app = FastAPI(
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.CORS_ORIGINS,
+    allow_origins=[
+        "http://localhost:5173",  # Dev frontend
+        "http://192.168.7.60:5173",
+        "http://192.168.7.60:8000"
+    ],
     allow_credentials=True,
-    allow_methods=["*"],  # Allow all methods
-    allow_headers=["*"],  # Allow all headers
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
+    allow_headers=[
+        "Content-Type",
+        "Authorization",
+        "X-User-ID",
+        "Accept",
+        "Origin",
+        "X-Requested-With",
+        "Access-Control-Request-Method",
+        "Access-Control-Request-Headers"
+    ],
     expose_headers=["*"],  # Expose all headers
-    max_age=settings.CORS_MAX_AGE,  # Cache preflight requests
+    max_age=3600,  # Cache preflight requests for 1 hour
 )
 
 security = HTTPBearer()
@@ -276,7 +289,7 @@ async def google_callback_redirect(request: Request):
             )
             
         # Redirect to frontend with success
-        frontend_url = settings.CORS_ORIGINS[0]
+        frontend_url = settings.FRONTEND_URL
         return RedirectResponse(
             url=f"{frontend_url}/auth/google/success?token={response['access_token']}",
             status_code=status.HTTP_302_FOUND
