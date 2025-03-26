@@ -44,8 +44,8 @@ class Settings(BaseSettings):
     # CORS Settings
     CORS_ORIGINS: List[str] = [
         "http://localhost:5173",  # Dev frontend
-        "http://192.168.7.154:5173",
-        "http://192.168.7.154:8000"  
+        "http://192.168.7.60:5173",
+        "http://192.168.7.60:8000"  
     ]
     CORS_METHODS: List[str] = ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"]
     CORS_HEADERS: List[str] = [
