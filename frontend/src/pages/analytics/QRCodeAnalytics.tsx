@@ -5,8 +5,9 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { AnalyticsService } from '@/services/api'
+import { AnalyticsService, qrService } from '@/services/api'
 import type { AnalyticsData, DailyMetric } from '@/types/analytics'
+import type { VCardResponse } from '@/types/api'
 import { format, subDays, addDays } from 'date-fns'
 import { 
   Loader2, RefreshCw, Smartphone, Globe, ArrowLeft, 
@@ -40,6 +41,8 @@ export default function VCardAnalytics() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState("overview")
+  const [vcardInfo, setVcardInfo] = useState<VCardResponse | null>(null)
+  const [vcardLoading, setVcardLoading] = useState(true)
   
   // Get real-time updates with VCard ID
   const { metrics: realtimeMetrics, isConnected } = useAnalyticsSSE({ vcardId: id })
@@ -231,27 +234,48 @@ export default function VCardAnalytics() {
     }
   }, [realtimeMetrics?.total_scans, metrics.total_scans, refetchHistory]);
 
-  const fetchAnalytics = async () => {
-    if (!id) return
-    
-    try {
-      setLoading(true)
-      setError(null)
-      console.log('Fetching analytics with timeRange:', timeRange)
-      const data = await analyticsService.getVCardAnalytics(id, timeRange)
-      console.log('Received analytics data:', data)
-      setAnalytics(data)
-    } catch (err) {
-      console.error('Failed to fetch analytics:', err)
-      setError(err instanceof Error ? err.message : 'Failed to fetch analytics')
-    } finally {
-      setLoading(false)
-    }
-  }
-
   useEffect(() => {
     fetchAnalytics()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id, timeRange])
+
+  // Separate useEffect for fetching VCard info - only need to fetch once per ID
+  useEffect(() => {
+    fetchVcardInfo()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id])
+
+  const fetchAnalytics = async () => {
+    if (!id) return;
+    
+    setLoading(true);
+    setError(null);
+    
+    try {
+      const data = await analyticsService.getVCardAnalytics(id, timeRange);
+      setAnalytics(data);
+    } catch (err: any) {
+      console.error('Failed to fetch analytics data:', err);
+      setError(err.message || 'Failed to fetch analytics data');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchVcardInfo = async () => {
+    if (!id) return;
+    
+    try {
+      setVcardLoading(true);
+      const vcardData = await qrService.getVCard(id);
+      setVcardInfo(vcardData);
+    } catch (err) {
+      console.error("Error fetching VCard information:", err);
+      // We don't set an error state here as the analytics is the primary functionality
+    } finally {
+      setVcardLoading(false);
+    }
+  };
 
   const handleBack = () => {
     navigate('/analytics')
@@ -344,7 +368,13 @@ export default function VCardAnalytics() {
             <ArrowLeft className="h-5 w-5" />
           </Button>
           <div>
-            <h1 className="text-2xl font-bold">VCard Analytics</h1>
+            <h1 className="text-2xl font-bold">
+              {vcardLoading 
+                ? "VCard Analytics" 
+                : vcardInfo 
+                  ? `${vcardInfo.first_name} ${vcardInfo.last_name} VCard's Analytics` 
+                  : "VCard Analytics"}
+            </h1>
             <p className="text-muted-foreground text-sm">Track performance and engagement of your digital business card</p>
           </div>
         </div>
