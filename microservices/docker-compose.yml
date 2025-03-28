@@ -215,7 +215,8 @@ services:
       - "443:443"  # Standard HTTPS port
       - "443:443/udp" # Needed for HTTP/3
     volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile # Mount the Caddy configuration
+      # Mount the directory containing Caddyfile instead of the file directly
+      - ./caddy:/etc/caddy
       - caddy_data:/data                 # Persists certificates and other Caddy state
       - caddy_config:/config             # Persists config state
     networks:
