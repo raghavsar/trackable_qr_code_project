@@ -3,11 +3,11 @@ import axios from 'axios'
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 const API_VERSION = import.meta.env.VITE_API_VERSION || 'v1'
 
-// Ensure we're using port 8000 for the API
-const apiUrl = API_URL.replace(':5173', ':8000');
+// Use the API_URL directly from env variables without port replacement
+const apiUrl = API_URL;
 
 export const axiosInstance = axios.create({
-  baseURL: `${apiUrl}/api/${API_VERSION}`,
+  baseURL: `${apiUrl}/${API_VERSION}`,
   headers: {
     'Content-Type': 'application/json',
   },
