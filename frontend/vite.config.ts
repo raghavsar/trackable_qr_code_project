@@ -8,13 +8,6 @@ export default defineConfig(({ mode }) => {
   // Set the third parameter to '' to load all env regardless of the `VITE_` prefix.
   const env = loadEnv(mode, process.cwd(), '')
   
-  // Helper function to handle string booleans
-  const parseHost = (host) => {
-    if (host === 'true') return true
-    if (host === 'false') return false
-    return host
-  }
-  
   return {
     plugins: [react()],
     resolve: {
@@ -23,10 +16,9 @@ export default defineConfig(({ mode }) => {
       },
     },
     server: {
-      port: parseInt(env.VITE_PORT || '5173'),
-      // Parse host value properly to handle 'true' as boolean true
-      host: parseHost(env.VITE_HOST) || true,
-      // allowedHosts: ['e032-14-97-193-22.ngrok-free.app'],
+      port: 5173,
+      host: '192.168.7.60',
+      allowedHosts: ['qr.phonon.io'],
       proxy: {
         '/api': {
           target: env.VITE_API_URL || 'http://localhost:8000',
@@ -42,14 +34,13 @@ export default defineConfig(({ mode }) => {
       },
       cors: true,
       hmr: {
-        // Parse host value properly for HMR too
-        host: env.VITE_HMR_HOST || undefined
+        host: '192.168.7.60'
       }
     },
     preview: {
-      port: parseInt(env.VITE_PORT || '5173'),
-      // Parse host value properly to handle 'true' as boolean true
-      host: parseHost(env.VITE_HOST) || true
+      port: 5173,
+      host: '192.168.7.60',
+      allowedHosts: ['qr.phonon.io']
     },
     define: {
       // Expose env variables to your app
