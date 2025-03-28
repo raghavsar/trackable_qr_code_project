@@ -39,6 +39,7 @@ microservices/qr-service/.env
 microservices/analytics-service/.env
 microservices/redirect-service/.env
 microservices/docker-compose.yml
+frontend/vite.config.ts
 
 # Debug logs
 npm-debug.log*

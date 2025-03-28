@@ -21,6 +21,17 @@ def get_redirect_uris() -> List[str]:
             return [uris]  # Single URI provided as string
     return ["http://localhost:5173/auth/google/callback"]
 
+def get_cors_origins() -> List[str]:
+    """Parse CORS_ORIGINS from environment variable."""
+    origins = os.getenv("CORS_ORIGINS")
+    if origins:
+        try:
+            return json.loads(origins)
+        except json.JSONDecodeError:
+            return [origins]  # Single origin provided as string
+    # Default fallback values
+    return ["http://localhost:5173", "http://192.168.7.60:5173", "http://192.168.7.60:8000"]
+
 class Settings(BaseSettings):
     # Service Info
     SERVICE_NAME: str = "QR Code Generator API Gateway"
@@ -40,6 +51,9 @@ class Settings(BaseSettings):
     ANALYTICS_SERVICE_URL: str
     REDIRECT_SERVICE_URL: str
     FRONTEND_URL: str
+    
+    # CORS Settings
+    CORS_ORIGINS: List[str] = get_cors_origins()
 
     model_config = {
         "env_file": ".env",
