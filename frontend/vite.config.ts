@@ -16,8 +16,9 @@ export default defineConfig(({ mode }) => {
       },
     },
     server: {
-      port: 5173,
-      host: '192.168.7.60',
+      port: parseInt(env.VITE_PORT || '5173'),
+      // Use the HOST environment variable if available, otherwise allow any host
+      host: env.VITE_HOST || true,
       // allowedHosts: ['e032-14-97-193-22.ngrok-free.app'],
       proxy: {
         '/api': {
@@ -34,12 +35,14 @@ export default defineConfig(({ mode }) => {
       },
       cors: true,
       hmr: {
-        host: '192.168.7.60'
+        // Use environment variable for HMR host or auto-detect
+        host: env.VITE_HMR_HOST || undefined
       }
     },
     preview: {
-      port: 5173,
-      host: '192.168.7.60'
+      port: parseInt(env.VITE_PORT || '5173'),
+      // Use the HOST environment variable if available, otherwise allow any host
+      host: env.VITE_HOST || true
     },
     define: {
       // Expose env variables to your app
