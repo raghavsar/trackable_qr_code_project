@@ -1,6 +1,6 @@
 qr.phonon.io {
     # Enable local HTTPS with a self-signed certificate
-    tls internal
+    # tls internal
 
     # Enable HTTP compression
     encode gzip zstd
