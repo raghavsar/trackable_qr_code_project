@@ -64,8 +64,6 @@ services:
       context: .
       dockerfile: api-gateway/Dockerfile
     container_name: qr-api-gateway
-    ports:
-      - "8000:8000"
     depends_on:
       mongodb:
         condition: service_healthy
@@ -208,10 +206,29 @@ services:
       - FRONTEND_URL=http://192.168.7.60:5173
       - ANALYTICS_SERVICE_URL=http://analytics-service:8004
 
+  caddy:
+    image: caddy:latest
+    container_name: qr-caddy
+    restart: always
+    ports:
+      - "80:80"    # Needed for HTTP->HTTPS redirects and ACME HTTP challenge
+      - "443:443"  # Standard HTTPS port
+      - "443:443/udp" # Needed for HTTP/3
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile # Mount the Caddy configuration
+      - caddy_data:/data                 # Persists certificates and other Caddy state
+      - caddy_config:/config             # Persists config state
+    networks:
+      - qr-network
+    depends_on:
+      - api-gateway # Ensure API gateway is started before Caddy tries proxying
+
 networks:
   qr-network:
     driver: bridge
 
 volumes:
   mongodb_data:
-  minio_data: 
+  minio_data:
+  caddy_data:
+  caddy_config:
