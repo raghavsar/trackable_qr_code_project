@@ -64,6 +64,8 @@ services:
       context: .
       dockerfile: api-gateway/Dockerfile
     container_name: qr-api-gateway
+    ports:
+      - "8000:8000"
     depends_on:
       mongodb:
         condition: service_healthy
