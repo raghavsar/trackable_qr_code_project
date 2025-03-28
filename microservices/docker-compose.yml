@@ -218,7 +218,6 @@ services:
       # Mount the Caddyfile directly to /config/Caddyfile
       - ./caddy/Caddyfile:/config/Caddyfile
       - caddy_data:/data                 # Persists certificates and other Caddy state
-      - caddy_config:/config             # Persists config state
     networks:
       - qr-network
     depends_on:
@@ -234,4 +233,3 @@ volumes:
   mongodb_data:
   minio_data:
   caddy_data:
-  caddy_config:
