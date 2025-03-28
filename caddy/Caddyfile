@@ -1,0 +1,99 @@
+qr.phonon.io {
+    # Enable automatic HTTPS
+    tls internal
+
+    # Global options
+    header {
+        # Security headers
+        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "DENY"
+        Referrer-Policy "strict-origin-when-cross-origin"
+        
+        # CORS headers for all routes
+        Access-Control-Allow-Origin "*"
+        Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS"
+        Access-Control-Allow-Headers "Content-Type, Authorization, X-Requested-With"
+        Access-Control-Allow-Credentials "true"
+        Access-Control-Max-Age "3600"
+        
+        # Remove Server header
+        -Server
+    }
+    
+    # Handle OPTIONS requests for CORS preflight
+    @options {
+        method OPTIONS
+    }
+    respond @options 204
+    
+    # API Gateway - handle all API requests
+    handle /api/* {
+        # Reverse proxy to API Gateway
+        reverse_proxy http://192.168.7.60:8000 {
+            # Preserve original host header
+            header_up Host {http.request.host}
+            
+            # Add headers for API Gateway
+            header_up X-Forwarded-Proto "https"
+            header_up X-Real-IP {remote_host}
+            header_up X-Forwarded-For {remote_host}
+            
+            # Preserve original path
+            header_up X-Original-URI {uri}
+        }
+    }
+    
+    # Handle analytics routes
+    handle /analytics/* {
+        # Rewrite to proper API path and reverse proxy
+        uri replace /analytics /api/v1/analytics
+        reverse_proxy http://192.168.7.60:8000 {
+            header_up Host {http.request.host}
+            header_up X-Forwarded-Proto "https"
+            header_up X-Real-IP {remote_host}
+            header_up X-Forwarded-For {remote_host}
+        }
+    }
+    
+    # Handle MinIO access for QR code images
+    handle /qrcodes/* {
+        # Reverse proxy to MinIO
+        reverse_proxy http://192.168.7.60:9000 {
+            header_up Host {http.request.host}
+            header_up X-Forwarded-Proto "https"
+        }
+    }
+    
+    # Catch-all handler for frontend assets
+    handle {
+        # Reverse proxy to frontend
+        reverse_proxy http://192.168.7.60:5173 {
+            header_up Host {http.request.host}
+            header_up X-Forwarded-Proto "https"
+            header_up X-Real-IP {remote_host}
+            header_up X-Forwarded-For {remote_host}
+        }
+    }
+    
+    # Log configuration
+    log {
+        output file /var/log/caddy/qr.phonon.io.log {
+            roll_size 10MB
+            roll_keep 5
+            roll_keep_for 72h
+        }
+        format json
+    }
+}
+
+# Development domain - useful for local testing
+192.168.7.60:443 {
+    # Redirect to the main domain
+    redir https://qr.phonon.io{uri} permanent
+}
+
+# HTTP to HTTPS redirect
+http://qr.phonon.io, http://192.168.7.60 {
+    redir https://qr.phonon.io{uri} permanent
+} 

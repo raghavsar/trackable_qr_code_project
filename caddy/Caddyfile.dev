@@ -1,0 +1,49 @@
+# Development Caddyfile for Windows
+# No automatic HTTPS for easier local development
+
+:8443 {
+    # Development CORS configuration
+    header {
+        # CORS headers for all routes
+        Access-Control-Allow-Origin "*"
+        Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS"
+        Access-Control-Allow-Headers "Content-Type, Authorization, X-Requested-With"
+        Access-Control-Allow-Credentials "true"
+        Access-Control-Max-Age "3600"
+    }
+    
+    # Handle OPTIONS requests for CORS preflight
+    @options {
+        method OPTIONS
+    }
+    respond @options 204
+    
+    # API Gateway - handle all API requests
+    handle /api/* {
+        reverse_proxy http://localhost:8000 {
+            header_up Host {http.request.host}
+            header_up X-Forwarded-Proto "https"
+        }
+    }
+    
+    # Handle analytics routes
+    handle /analytics/* {
+        uri replace /analytics /api/v1/analytics
+        reverse_proxy http://localhost:8000
+    }
+    
+    # Handle MinIO access for QR code images
+    handle /qrcodes/* {
+        reverse_proxy http://localhost:9000
+    }
+    
+    # Catch-all handler for frontend assets
+    handle {
+        reverse_proxy http://localhost:5173
+    }
+    
+    # Simple console logging
+    log {
+        format console
+    }
+} 
