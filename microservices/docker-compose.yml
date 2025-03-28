@@ -215,14 +215,16 @@ services:
       - "443:443"  # Standard HTTPS port
       - "443:443/udp" # Needed for HTTP/3
     volumes:
-      # Mount the directory containing Caddyfile instead of the file directly
-      - ./caddy:/etc/caddy
+      # Mount the Caddyfile directly to /config/Caddyfile
+      - ./caddy/Caddyfile:/config/Caddyfile
       - caddy_data:/data                 # Persists certificates and other Caddy state
       - caddy_config:/config             # Persists config state
     networks:
       - qr-network
     depends_on:
       - api-gateway # Ensure API gateway is started before Caddy tries proxying
+    # Explicitly tell Caddy to use the mounted config file
+    command: ["caddy", "run", "--config", "/config/Caddyfile", "--adapter", "caddyfile"]
 
 networks:
   qr-network:
