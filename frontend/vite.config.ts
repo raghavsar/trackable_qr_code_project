@@ -8,6 +8,13 @@ export default defineConfig(({ mode }) => {
   // Set the third parameter to '' to load all env regardless of the `VITE_` prefix.
   const env = loadEnv(mode, process.cwd(), '')
   
+  // Helper function to handle string booleans
+  const parseHost = (host) => {
+    if (host === 'true') return true
+    if (host === 'false') return false
+    return host
+  }
+  
   return {
     plugins: [react()],
     resolve: {
@@ -17,8 +24,8 @@ export default defineConfig(({ mode }) => {
     },
     server: {
       port: parseInt(env.VITE_PORT || '5173'),
-      // Use the HOST environment variable if available, otherwise allow any host
-      host: env.VITE_HOST || true,
+      // Parse host value properly to handle 'true' as boolean true
+      host: parseHost(env.VITE_HOST) || true,
       // allowedHosts: ['e032-14-97-193-22.ngrok-free.app'],
       proxy: {
         '/api': {
@@ -35,14 +42,14 @@ export default defineConfig(({ mode }) => {
       },
       cors: true,
       hmr: {
-        // Use environment variable for HMR host or auto-detect
+        // Parse host value properly for HMR too
         host: env.VITE_HMR_HOST || undefined
       }
     },
     preview: {
       port: parseInt(env.VITE_PORT || '5173'),
-      // Use the HOST environment variable if available, otherwise allow any host
-      host: env.VITE_HOST || true
+      // Parse host value properly to handle 'true' as boolean true
+      host: parseHost(env.VITE_HOST) || true
     },
     define: {
       // Expose env variables to your app
