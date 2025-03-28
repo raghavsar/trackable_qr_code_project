@@ -1,0 +1,26 @@
+qr.phonon.io {
+    # Enable HTTP compression
+    encode gzip zstd
+
+    # Handle requests starting with /api/
+    # Proxy them to the api-gateway container on port 8000
+    # Caddy automatically manages HTTPS for qr.phonon.io
+    handle_path /api/* {
+        reverse_proxy api-gateway:8000
+    }
+
+    # TODO: Add a 'handle' block here if you also want Caddy
+    # to serve your frontend application from the same domain.
+    # Example:
+    # handle {
+    #     root * /path/to/your/frontend/build
+    #     file_server
+    #     try_files {path} /index.html
+    # }
+
+    # Logging (optional, Caddy logs by default)
+    log {
+        output stderr
+        format json
+    }
+} 
