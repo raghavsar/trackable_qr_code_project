@@ -1,12 +1,14 @@
 qr.phonon.io {
+    # Enable local HTTPS with a self-signed certificate
+    tls internal
+
     # Enable HTTP compression
     encode gzip zstd
 
     # Handle requests starting with /api/
-    # Proxy them to the api-gateway container on port 8000
-    # Caddy automatically manages HTTPS for qr.phonon.io
+    # Proxy them to the specific IP of the api-gateway on port 8000
     handle_path /api/* {
-        reverse_proxy api-gateway:8000
+        reverse_proxy 192.168.7.60:8000
     }
 
     # TODO: Add a 'handle' block here if you also want Caddy
