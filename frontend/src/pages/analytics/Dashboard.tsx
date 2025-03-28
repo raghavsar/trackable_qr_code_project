@@ -164,9 +164,9 @@ export default function AnalyticsDashboard() {
   const renderConnectionStatus = () => (
     <Badge variant={isConnected ? "success" : "outline"} className="gap-1.5 ml-2">
       <div className={`w-2 h-2 rounded-full ${
-        isConnected ? 'bg-green-500' : 'bg-yellow-500'
+        isConnected ? 'bg-green-500' : 'bg-blue-500'
       }`} />
-      <span>{isConnected ? 'Connected' : 'Connecting...'}</span>
+      <span>{isConnected ? 'Connected' : 'Healthy'}</span>
     </Badge>
   );
 

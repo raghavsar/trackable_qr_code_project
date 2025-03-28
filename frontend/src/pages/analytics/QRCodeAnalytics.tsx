@@ -156,6 +156,44 @@ export default function VCardAnalytics() {
       }
     });
     
+    // If we don't have historical metrics but have recent_scans, 
+    // process the recent scans by their actual dates
+    if (processedHistoricalMetrics.length === 0 && metrics.recent_scans.length > 0) {
+      // Group scans by date
+      const scansByDate: Record<string, { total: number, mobile: number }> = {};
+      
+      metrics.recent_scans.forEach(scan => {
+        // Only count scan events
+        if (scan.action_type === 'scan') {
+          const scanDate = format(new Date(scan.timestamp), 'yyyy-MM-dd');
+          
+          // Initialize if not exists
+          if (!scansByDate[scanDate]) {
+            scansByDate[scanDate] = { total: 0, mobile: 0 };
+          }
+          
+          // Count the scan
+          scansByDate[scanDate].total += 1;
+          if (scan.device_info?.is_mobile) {
+            scansByDate[scanDate].mobile += 1;
+          }
+        }
+      });
+      
+      // Update the data map with the processed scans by date
+      Object.entries(scansByDate).forEach(([date, counts]) => {
+        // Only update if the date is within our range
+        if (dataMap[date]) {
+          dataMap[date] = {
+            date,
+            total_scans: counts.total,
+            mobile_scans: counts.mobile,
+            desktop_scans: counts.total - counts.mobile
+          };
+        }
+      });
+    }
+    
     // For the current day, we might need to supplement with real-time data
     // as the historical metrics might not have the latest scans
     const today = format(new Date(), 'yyyy-MM-dd');
@@ -179,7 +217,7 @@ export default function VCardAnalytics() {
     
     // If we have more recent scans than what's in historical data for today,
     // update today's values (this handles real-time updates better)
-    if (todayTotalFromRecentScans > dataMap[today]?.total_scans) {
+    if (todayTotalFromRecentScans > (dataMap[today]?.total_scans || 0)) {
       dataMap[today] = {
         date: today,
         total_scans: todayTotalFromRecentScans,
@@ -188,9 +226,12 @@ export default function VCardAnalytics() {
       };
     }
     
-    // If we have no historical or recent data but we do have totals,
-    // at least show something in the chart for today
-    if (Object.values(dataMap).every(d => d.total_scans === 0) && metrics.total_scans > 0) {
+    // Only as a last resort fallback:
+    // If we have no data points at all (no historical data and no processed recent_scans),
+    // but we do have total metrics, then show as single data point for today
+    const hasAnyDataPoints = Object.values(dataMap).some(d => d.total_scans > 0);
+    if (!hasAnyDataPoints && metrics.total_scans > 0) {
+      console.log('No historical or processed scan data available, falling back to showing all scans for today');
       dataMap[today] = {
         date: today,
         total_scans: metrics.total_scans,
@@ -208,7 +249,8 @@ export default function VCardAnalytics() {
       timeRange,
       datesInRange: dateRange.length,
       dataPointsGenerated: dataArray.length,
-      hasData: dataArray.some(d => d.total_scans > 0)
+      hasData: dataArray.some(d => d.total_scans > 0),
+      datesWithData: dataArray.filter(d => d.total_scans > 0).map(d => d.date)
     });
     
     return dataArray;
@@ -282,9 +324,11 @@ export default function VCardAnalytics() {
   }
 
   const handleRefresh = useCallback(() => {
-    fetchAnalytics()
-    refetchHistory()
-  }, [fetchAnalytics, refetchHistory])
+    // Refresh all data
+    fetchAnalytics();
+    refetchHistory();
+    fetchVcardInfo(); // Also refresh VCard info
+  }, [fetchAnalytics, refetchHistory, fetchVcardInfo]);
 
   // Format date for display
   const formatDate = (dateString: string) => {
@@ -302,14 +346,26 @@ export default function VCardAnalytics() {
   }
 
   // Show connection status
-  const renderConnectionStatus = () => (
-    <Badge variant={isConnected ? "success" : "outline"} className="gap-1.5 ml-2">
-      <div className={`w-2 h-2 rounded-full ${
-        isConnected ? 'bg-green-500' : 'bg-yellow-500'
-      }`} />
-      <span>{isConnected ? 'Connected' : 'Connecting...'}</span>
-    </Badge>
-  )
+  const renderConnectionStatus = () => {
+    // Check if we have actual data loaded, not just an empty metrics object
+    const hasRealData = metrics.total_scans > 0 || metrics.recent_scans.length > 0;
+    // Check if we've completed loading (even if there's no data)
+    const loadingComplete = !loading && !historyLoading && !vcardLoading;
+    // Consider the connection as fully loaded if we're connected AND either:
+    // 1. We have actual data (non-zero metrics)
+    // 2. We have confirmed data has been loaded (even if all zeros)
+    // 3. All loading processes have completed
+    const isDataLoaded = isConnected && (hasRealData || (realtimeMetrics !== undefined && analytics !== null) || loadingComplete);
+    
+    return (
+      <Badge variant={isDataLoaded ? "success" : "outline"} className="gap-1.5 ml-2">
+        <div className={`w-2 h-2 rounded-full ${
+          isDataLoaded ? 'bg-green-500' : 'bg-blue-500'
+        }`} />
+        <span>{isDataLoaded ? 'Connected' : 'Healthy'}</span>
+      </Badge>
+    );
+  }
 
   // Loading state
   if ((loading || historyLoading) && !metrics.total_scans && !metrics.recent_scans.length && !processedHistoricalMetrics.length && !chartData.length) {
