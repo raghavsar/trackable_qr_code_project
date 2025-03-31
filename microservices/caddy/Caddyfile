@@ -31,6 +31,16 @@ qr.phonon.io {
     # Logging (optional, Caddy logs by default)
     log {
         output stderr
-        format json
+        # Use a custom JSON format to explicitly include incoming XFF header
+        format json {
+            time_format "rfc3339"
+            output_path "stderr"
+            level "info"
+            message "{http.request.method} {http.request.uri}"
+            property "remote_addr", "{http.request.remote}"
+            property "host", "{http.request.host}"
+            property "proto", "{http.request.proto}"
+            property "xff_in", "{http.request.header.X-Forwarded-For}" # Log incoming XFF
+        }
     }
 } 
