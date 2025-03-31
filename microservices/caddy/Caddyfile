@@ -7,7 +7,7 @@ qr.phonon.io {
 
     # Trust proxies (e.g., AWS Load Balancer)
     # Replace the example ranges below with your actual AWS LB subnet CIDR(s)
-    trusted_proxies <aws_lb_ip_range_1> <aws_lb_ip_range_2> # e.g., 10.0.1.0/24 10.0.2.0/24
+    trusted_proxies 10.20.0.0/19
 
     # Handle ACME challenge requests for Let's Encrypt SSL
     handle /.well-known/acme-challenge/* {
