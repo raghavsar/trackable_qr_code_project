@@ -861,6 +861,28 @@ async def get_public_vcard(vcard_id: str, request: Request):
     """Get public VCard data without authentication."""
     return await forward_request(request, settings.VCARD_SERVICE_URL, f"/vcards/public/{vcard_id}")
 
+# Add this diagnostic endpoint for testing client IP handling
+@app.get("/api/v1/test-client-ip")
+async def get_client_ip(request: Request):
+    # This logs the IP Uvicorn directly sees connecting
+    client_host = request.client.host
+    logger.info(f"Direct client host seen: {client_host}")
+    
+    # Log the raw header Uvicorn received
+    x_forwarded_for = request.headers.get('x-forwarded-for')
+    logger.info(f"X-Forwarded-For header received: {x_forwarded_for}")
+    
+    # Also log all request headers for complete debugging
+    logger.info("All request headers:")
+    for header_name, header_value in request.headers.items():
+        logger.info(f"  {header_name}: {header_value}")
+    
+    return {
+        "client_host": client_host, 
+        "x_forwarded_for": x_forwarded_for,
+        "all_headers": dict(request.headers)
+    }
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(
