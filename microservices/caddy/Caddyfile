@@ -1,13 +1,15 @@
+{
+    # Global options
+    # Trust proxies (e.g., AWS Load Balancer)
+    trusted_proxies 10.20.0.0/19
+}
+
 qr.phonon.io {
     # Use a self-signed certificate for now
     tls internal
 
     # Enable HTTP compression
     encode gzip zstd
-
-    # Trust proxies (e.g., AWS Load Balancer)
-    # Replace the example ranges below with your actual AWS LB subnet CIDR(s)
-    trusted_proxies 10.20.0.0/19
 
     # Handle ACME challenge requests for Let's Encrypt SSL
     handle /.well-known/acme-challenge/* {
