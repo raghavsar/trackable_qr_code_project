@@ -11,4 +11,5 @@ COPY api-gateway/main.py /app/
 COPY api-gateway/circuit_breaker.py /app/
 COPY api-gateway/config.py /app/
 
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers", "--forwarded-allow-ips=*"]
+# CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers", "--forwarded-allow-ips=*"]
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
