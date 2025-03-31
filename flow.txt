@@ -1,6 +1,0 @@
-Frontend -> API Gateway -> Appropriate Service
-   ↑          |
-   |          ↓
-User Service  VCard Service -> QR Service
-                    ↓             ↓
-             Analytics Service <- Redirect Service
