@@ -19,7 +19,10 @@ qr.phonon.io {
     # Handle requests starting with /api/
     # Proxy them to the api-gateway service on port 8000
     handle_path /api/* {
-        reverse_proxy api-gateway:8000
+        reverse_proxy api-gateway:8000 {
+            # Trust the upstream AWS Load Balancer
+            trusted_proxies 10.20.0.0/19
+        }
     }
 
     # TODO: Add a 'handle' block here if you also want Caddy
