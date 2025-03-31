@@ -5,6 +5,11 @@ qr.phonon.io {
     # Enable HTTP compression
     encode gzip zstd
 
+    # Handle ACME challenge requests for Let's Encrypt SSL
+    handle /.well-known/acme-challenge/* {
+        respond 200
+    }
+
     # Handle requests starting with /api/
     # Proxy them to the api-gateway service on port 8000
     handle_path /api/* {
