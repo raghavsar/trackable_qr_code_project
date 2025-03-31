@@ -34,7 +34,6 @@ qr.phonon.io {
         # Use a custom JSON format to explicitly include incoming XFF header
         format json {
             time_format "rfc3339"
-            output_path "stderr"
             level "info"
             message "{http.request.method} {http.request.uri}"
             property "remote_addr", "{http.request.remote}"
