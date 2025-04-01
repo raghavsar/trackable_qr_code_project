@@ -1,0 +1,68 @@
+flowchart TD
+    subgraph "User Interaction"
+        direction LR
+        User["User Browser"]
+        QRScanDevice["User Device Scanning QR"]
+    end
+
+    subgraph "Presentation Layer"
+        Frontend["React SPA (Vite)<br/>UI/UX, State Mgmt (React Query)"]
+    end
+
+    subgraph "API & Services Layer"
+        APIGateway["API Gateway (FastAPI)<br/>Entry Point, Auth (JWT), Routing, CORS, SSE Proxy"]
+
+        subgraph "Core Microservices"
+            direction TB
+            UserService["User Service (FastAPI)<br/>Handles User Accounts & Auth Logic"]
+            VCardService["VCard Service (FastAPI)<br/>Manages VCard Data & Assets"]
+            QRService["QR Service (FastAPI)<br/>Generates QR Code Images"]
+            RedirectService["Redirect Service (FastAPI)<br/>Handles QR Scan Redirection & Initiates Tracking"]
+            AnalyticsService["Analytics Service (FastAPI)<br/>Tracks Scans, Aggregates Data, Provides SSE"]
+        end
+    end
+
+    subgraph "Data & Storage Layer"
+        direction LR
+        MongoDB["MongoDB<br/>Stores User Profiles, VCard Details, Aggregated Analytics"]
+        Redis["Redis<br/>Caches Scan Events, Real-time Counters"]
+        MinIO["MinIO (S3 API)<br/>Stores VCard Profile Photos, Static Assets"]
+    end
+
+    %% Frontend Interactions
+    User -- "HTTPS" --> Frontend
+    Frontend -- "API Calls (HTTPS)" --> APIGateway
+
+    %% Gateway to Services
+    APIGateway -- "User Auth/CRUD" --> UserService
+    APIGateway -- "VCard CRUD" --> VCardService
+    APIGateway -- "Generate QR" --> QRService
+    APIGateway -- "Get Analytics / SSE" --> AnalyticsService
+
+    %% Service to Data/Storage
+    UserService -- "Store/Retrieve Users" --> MongoDB
+    VCardService -- "Store/Retrieve VCards" --> MongoDB
+    VCardService -- "Store/Retrieve Photos" --> MinIO
+    AnalyticsService -- "Store Aggregates" --> MongoDB
+    AnalyticsService -- "Cache/Increment Scans" --> Redis
+
+    %% QR Scan Flow
+    QRScanDevice -- "Scan Request (HTTPS)" --> RedirectService
+    RedirectService -- "Log Scan Event (Async)" --> AnalyticsService
+    RedirectService -- "Redirect (HTTP 302)" --> User -- "Target URL / VCard Data" --> User
+
+    %% Real-time Analytics Flow
+    AnalyticsService -- "Push Updates SSE" --> APIGateway -- "Forward SSE" --> Frontend
+
+    %% Styling
+    classDef frontendStyle fill:#E3F2FD,stroke:#2196F3,stroke-width:2px
+    classDef gatewayStyle fill:#FFF3E0,stroke:#FF9800,stroke-width:2px
+    classDef serviceStyle fill:#E8F5E9,stroke:#4CAF50,stroke-width:2px
+    classDef dataStyle fill:#FCE4EC,stroke:#E91E63,stroke-width:2px
+    classDef userStyle fill:#EEEEEE,stroke:#607D8B,stroke-width:2px
+
+    class Frontend frontendStyle
+    class APIGateway gatewayStyle
+    class UserService,VCardService,QRService,RedirectService,AnalyticsService serviceStyle
+    class MongoDB,Redis,MinIO dataStyle
+    class User,QRScanDevice userStyle
