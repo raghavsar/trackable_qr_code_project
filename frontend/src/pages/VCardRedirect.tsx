@@ -288,6 +288,7 @@ export default function VCardRedirect() {
             </Button>
           </div>
 
+          {/* REMOVE THIS DIV BLOCK 
           <div className="flex justify-center pt-4">
             <Button
               onClick={handleAddContact}
@@ -297,6 +298,7 @@ export default function VCardRedirect() {
               Add Contact
             </Button>
           </div>
+          END REMOVE */}
         </CardContent>
       </Card>
     </div>
