@@ -1,0 +1,50 @@
+---
+config:
+  layout: fixed
+---
+flowchart TD
+ subgraph subGraph0["User Facing"]
+        User["User Browser"]
+  end
+ subgraph s1["Internet/Edge"]
+        DNS["AWS Route 53"]
+        ELB["AWS ELB qr.phonon.io"]
+  end
+ subgraph subGraph2["Internal Network / Proxy"]
+        Caddy["Caddy Reverse Proxy"]
+  end
+ subgraph subGraph3["Application Services"]
+        Frontend["Frontend Service - React App @ :5173"]
+        APIGateway["API Gateway :8000"]
+        UserService["User Service :8001"]
+        VCardService["VCard Service :8002"]
+        QRService["QR Service :8003"]
+        AnalyticsService["Analytics Service :8004"]
+        RedirectService["Redirect Service :8005"]
+  end
+ subgraph subGraph4["Data Stores"]
+        MongoDB[("MongoDB")]
+        Redis[("Redis")]
+        Minio[("Minio Object Storage")]
+  end
+    User -- HTTPS Request --> DNS
+    DNS -- Resolves to --> ELB
+    ELB -- Forwarded Traffic --> Caddy
+    Caddy -- Serves '/' --> Frontend
+    Caddy -- Proxies '/api/*' --> APIGateway
+    Frontend -- Serves App --> User
+    APIGateway -- Route based on path --> UserService & VCardService & QRService & AnalyticsService & RedirectService
+    UserService -- CRUD --> MongoDB
+    VCardService -- CRUD --> MongoDB
+    VCardService -- Stores/Retrieves Files --> Minio
+    QRService -- CRUD --> MongoDB
+    AnalyticsService -- Stores Aggregated Data --> MongoDB
+    AnalyticsService -- "Real-time/Cache" --> Redis
+    RedirectService -- Reads Data --> MongoDB
+    style ELB fill:#f9f,stroke:#333,stroke-width:2px
+    style Caddy fill:#ccf,stroke:#333,stroke-width:2px
+    style Frontend fill:#9cf,stroke:#333,stroke-width:2px
+    style APIGateway fill:#ccf,stroke:#333,stroke-width:2px
+    style MongoDB fill:#9c9,stroke:#333,stroke-width:2px
+    style Redis fill:#f99,stroke:#333,stroke-width:2px
+    style Minio fill:#fc9,stroke:#333,stroke-width:2px
