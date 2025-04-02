@@ -19,6 +19,45 @@ import { useNavigate } from 'react-router-dom'
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { qrService } from '@/services/api';
+import type { VCardResponse } from '@/types/api';
+
+// Component to display VCard owner name
+const VCardOwnerDisplay = ({ vcardId }: { vcardId: string }) => {
+  const [ownerName, setOwnerName] = useState<string>(`VCard: ${vcardId}`);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchVCardOwner = async () => {
+      try {
+        // Only attempt to fetch if we have a valid MongoDB ObjectId (24 hex chars)
+        if (vcardId && /^[0-9a-fA-F]{24}$/.test(vcardId)) {
+          const vcard = await qrService.getVCard(vcardId);
+          if (vcard && vcard.first_name && vcard.last_name) {
+            setOwnerName(`${vcard.first_name} ${vcard.last_name}`);
+          }
+        }
+      } catch (error) {
+        console.error('Error fetching VCard owner:', error);
+        // Keep the fallback VCard ID format if we can't fetch the name
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchVCardOwner();
+  }, [vcardId]);
+
+  if (isLoading) {
+    return <span className="text-xs text-muted-foreground animate-pulse">Loading...</span>;
+  }
+
+  return (
+    <span className="text-xs text-muted-foreground truncate max-w-xs">
+      {ownerName}
+    </span>
+  );
+};
 
 export default function AnalyticsDashboard() {
   const [timeRange, setTimeRange] = useState('30');
@@ -106,13 +145,28 @@ export default function AnalyticsDashboard() {
     navigate('/');
   }
 
+  // Format date for IST display
+  const formatDate = (dateString: string) => {
+    try {
+      // Create a date object from the timestamp
+      const date = new Date(dateString);
+
+      // Format in IST (UTC+5:30)
+      // First convert to UTC string, then apply IST offset manually
+      const istDate = new Date(date.getTime() + (5.5 * 60 * 60 * 1000));
+      return format(istDate, 'MMM dd, yyyy, h:mm a').replace(/\bam\b/g, 'AM').replace(/\bpm\b/g, 'PM') + ' IST';
+    } catch (e) {
+      return dateString;
+    }
+  }
+
   // Show connection status
   const renderConnectionStatus = () => (
     <Badge variant={isConnected ? "success" : "outline"} className="gap-1.5 ml-2">
       <div className={`w-2 h-2 rounded-full ${
-        isConnected ? 'bg-green-500' : 'bg-yellow-500'
+        isConnected ? 'bg-green-500' : 'bg-blue-500'
       }`} />
-      <span>{isConnected ? 'Connected' : 'Connecting...'}</span>
+      <span>{isConnected ? 'Connected' : 'Healthy'}</span>
     </Badge>
   );
 
@@ -416,7 +470,11 @@ export default function AnalyticsDashboard() {
                         className="text-xs text-muted-foreground"
                         tickLine={false}
                         axisLine={false}
-                        tickFormatter={(value) => format(new Date(value), 'MMM dd')}
+                        tickFormatter={(value) => {
+                          const date = new Date(value);
+                          const istDate = new Date(date.getTime() + (5.5 * 60 * 60 * 1000));
+                          return format(istDate, 'MMM dd');
+                        }}
                         padding={{ left: 20, right: 20 }}
                       />
                       <YAxis 
@@ -436,7 +494,11 @@ export default function AnalyticsDashboard() {
                           const label = name === 'total_scans' ? 'Total Scans' : 'Mobile Scans';
                           return [value, label];
                         }}
-                        labelFormatter={(label) => format(new Date(label), 'MMMM dd, yyyy')}
+                        labelFormatter={(label) => {
+                          const date = new Date(label);
+                          const istDate = new Date(date.getTime() + (5.5 * 60 * 60 * 1000));
+                          return format(istDate, 'MMMM dd, yyyy') + ' (IST)';
+                        }}
                       />
                       <Legend 
                         verticalAlign="top" 
@@ -561,16 +623,15 @@ export default function AnalyticsDashboard() {
                                 )}
                               </div>
                               <p className="text-xs text-muted-foreground truncate max-w-xs">
-                                {scan.vcard_id ? `VCard: ${scan.vcard_id}` : 'System-wide scan'}
+                                {scan.vcard_id ? <VCardOwnerDisplay vcardId={scan.vcard_id} /> : 'System-wide scan'}
                               </p>
                             </div>
                             
                             <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                              <Calendar className="h-3 w-3" />
-                              <span>{format(new Date(scan.timestamp), 'MMM dd, yyyy')}</span>
-                              <span className="mx-1">•</span>
-                              <Clock className="h-3 w-3" />
-                              <span>{format(new Date(scan.timestamp), 'h:mm a')}</span>
+                              <Calendar className="h-3 w-3 mr-1" />
+                              <span className="bg-muted/50 px-2 py-1 rounded-md">
+                                {formatDate(scan.timestamp)}
+                              </span>
                             </div>
                           </div>
                           <p className="text-xs text-muted-foreground mt-1">

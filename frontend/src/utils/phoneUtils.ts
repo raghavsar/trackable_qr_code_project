@@ -4,34 +4,29 @@
 
 /**
  * Format phone number to E.164 format (+[country_code][number])
- * Assumes Indian numbers if no country code provided
+ * Preserves the country code that was provided
  */
 export const formatPhoneNumber = (phone: string | undefined): string => {
   if (!phone) return '';
 
-  // Remove all non-digit characters
-  const digits = phone.replace(/\D/g, '');
-
-  // If already has country code (starts with +), just format
-  if (phone.startsWith('+')) {
-    return `+${digits}`;
+  // If already formatted with a country code, return as is
+  if (phone.match(/^\+\d+\s+\d+/)) {
+    return phone;
   }
 
-  // Remove leading 0 if exists
-  const number = digits.startsWith('0') ? digits.slice(1) : digits;
+  // Remove all non-digit and non-plus characters
+  let formatted = phone.replace(/[^\d+]/g, '');
 
-  // If number starts with 91 and is correct length, assume it's already formatted
-  if (number.startsWith('91') && (number.length === 12)) {
-    return `+${number}`;
+  // Make sure there's only one + at the beginning
+  formatted = formatted.replace(/\+/g, '');
+
+  // If no country code, we should not normally reach here because the UI
+  // now enforces a country code selection, but as a fallback:
+  if (!formatted.startsWith('+')) {
+    formatted = '+' + formatted;
   }
 
-  // For Indian numbers (assuming 10 digits), add +91
-  if (number.length === 10) {
-    return `+91${number}`;
-  }
-
-  // Return original number if can't determine format
-  return `+${number}`;
+  return formatted;
 };
 
 /**
@@ -42,16 +37,22 @@ export const validatePhoneNumber = (phone: string | undefined): { isValid: boole
     return { isValid: true }; // Phone is optional
   }
 
-  const digits = phone.replace(/\D/g, '');
-
   // Check if number has country code
-  if (!phone.startsWith('+')) {
-    return { isValid: false, error: 'Phone number must start with country code (e.g., +91)' };
+  if (!phone.includes('+')) {
+    return { isValid: false, error: 'Phone number must include country code' };
   }
 
-  // Check length (international format should be 11-15 digits)
-  if (digits.length < 11 || digits.length > 15) {
-    return { isValid: false, error: 'Phone number must be between 11 and 15 digits including country code' };
+  // Get only the digits (excluding the +)
+  const digits = phone.replace(/\D/g, '');
+
+  // Check minimum length (should have at least a country code + local number)
+  if (digits.length < 7) {
+    return { isValid: false, error: 'Phone number is too short' };
+  }
+
+  // Check maximum length
+  if (digits.length > 15) {
+    return { isValid: false, error: 'Phone number is too long' };
   }
 
   return { isValid: true };

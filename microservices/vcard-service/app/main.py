@@ -361,7 +361,7 @@ async def download_vcard(
         
         # Add email with work type label (removed INTERNET type)
         if vcard.get('email'):
-            vcf_lines.append(f"EMAIL;TYPE=WORK:{str(vcard['email'])}")
+            vcf_lines.append(f"EMAIL;TYPE=INTERNET:{str(vcard['email'])}")
         
         # Add phone numbers with proper types
         if vcard.get('mobile_number'):

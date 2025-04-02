@@ -20,7 +20,8 @@ import QRCodeEditor from './QRCodeEditor'
 import QRCodeList from './QRCodeList'
 import { Badge } from "../ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../ui/tabs"
-import { 
+import { PhoneNumberInput } from '../PhoneNumberInput'
+import {
   AlertDialog,
   AlertDialogAction, 
   AlertDialogCancel,
@@ -35,7 +36,7 @@ interface FormData {
   first_name: string
   last_name: string
   email: string
-  mobile_number: string | undefined
+  mobile_number: string
   work_number: string | undefined
   profile_picture: string | undefined
   company: string | undefined
@@ -163,7 +164,7 @@ export default function VCardForm() {
     first_name: "",
     last_name: "",
     email: "",
-    mobile_number: undefined,
+    mobile_number: "",
     work_number: undefined,
     profile_picture: undefined,
     company: undefined,
@@ -198,12 +199,20 @@ export default function VCardForm() {
         }
       }))
     } else {
-      setFormData(prev => ({ 
-        ...prev, 
-        [name]: value || undefined 
+      setFormData(prev => ({
+        ...prev,
+        [name]: value || undefined
       }))
     }
   }
+
+  // Add handler for phone number changes
+  const handlePhoneChange = (field: 'mobile_number' | 'work_number') => (value: string) => {
+    setFormData(prev => ({
+      ...prev,
+      [field]: value || undefined
+    }));
+  };
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -260,23 +269,89 @@ export default function VCardForm() {
     }
   }
 
-  const handleShare = async (qrCode: QRCodeResponse) => {
+  const handleShare = async (qrCode: QRCodeResponse | any) => {
     try {
-      const redirectUrl = `${window.location.origin}/r/${qrCode.vcard_id}`;
+      // Log the QR code object to help with debugging
+      console.log('Share attempt with QR code data:', qrCode);
+
+      // Get vcard_id from either root level or metadata
+      const vcardId = qrCode.vcard_id || (qrCode.metadata && qrCode.metadata.vcard_id);
       
-      if (navigator.share) {
-        await navigator.share({
-          title: 'My Digital Business Card',
-          text: 'Check out my digital business card!',
-          url: redirectUrl
-        });
+      console.log('Extracted vCard ID:', vcardId);
+
+      if (!vcardId) {
+        console.error('Missing vCard ID in QR code data');
+        toast.error('Cannot share: Missing VCard ID');
+        return;
+      }
+
+      // Determine name to use in share message
+      const name = qrCode.metadata?.vcard_name ||
+                   `${qrCode.metadata?.firstName || ''} ${qrCode.metadata?.lastName || ''}`.trim() ||
+                   'Digital Business Card';
+
+      const redirectUrl = `${window.location.origin}/r/${vcardId}`;
+      console.log('Share URL:', redirectUrl);
+
+      // Check if Web Share API is available and supported
+      if (navigator.share && typeof navigator.share === 'function') {
+        console.log('Using Web Share API');
+        try {
+          await navigator.share({
+            title: `${name}'s Digital Business Card`,
+            text: `Check out ${name}'s digital business card!`,
+            url: redirectUrl
+          });
+          toast.success('Shared successfully!');
+        } catch (shareError) {
+          console.error('Web Share API error:', shareError);
+
+          // If share was aborted by user, don't show error
+          if (shareError instanceof Error && shareError.name === 'AbortError') {
+            console.log('Share canceled by user');
+            return;
+          }
+
+          // Fallback to clipboard if Web Share API fails
+          await fallbackToClipboard(redirectUrl);
+        }
       } else {
-        await navigator.clipboard.writeText(redirectUrl);
-        toast.success('Link copied to clipboard!');
+        console.log('Web Share API not supported, using clipboard fallback');
+        await fallbackToClipboard(redirectUrl);
       }
     } catch (error) {
-      console.error('Error sharing:', error);
+      console.error('Error in handleShare:', error);
       toast.error('Failed to share QR code');
+    }
+  };
+
+  // Helper function for clipboard fallback
+  const fallbackToClipboard = async (url: string) => {
+    try {
+      await navigator.clipboard.writeText(url);
+      toast.success('Link copied to clipboard!');
+    } catch (clipboardError) {
+      console.error('Clipboard write error:', clipboardError);
+
+      // Use the execCommand fallback for older browsers
+      try {
+        const textArea = document.createElement('textarea');
+        textArea.value = url;
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+        const successful = document.execCommand('copy');
+        document.body.removeChild(textArea);
+
+        if (successful) {
+          toast.success('Link copied to clipboard!');
+        } else {
+          throw new Error('execCommand copy failed');
+        }
+      } catch (legacyError) {
+        console.error('Legacy clipboard fallback error:', legacyError);
+        toast.error('Could not copy to clipboard. Please copy the URL manually.');
+      }
     }
   };
 
@@ -304,7 +379,10 @@ export default function VCardForm() {
   }
 
   const isFormComplete = () => {
-    return formData.first_name && formData.last_name && formData.email;
+    return formData.first_name &&
+           formData.last_name &&
+           formData.email &&
+           formData.mobile_number;
   };
 
   return (
@@ -386,7 +464,7 @@ export default function VCardForm() {
                           <div className="space-y-1.5">
                             <Label htmlFor="first_name" className="text-sm font-medium">
                               <User className="h-3.5 w-3.5 inline mr-1.5" />
-                              First name
+                              First name <span className="text-red-500">*</span>
                             </Label>
                             <Input
                               id="first_name"
@@ -401,7 +479,7 @@ export default function VCardForm() {
                           <div className="space-y-1.5">
                             <Label htmlFor="last_name" className="text-sm font-medium">
                               <User className="h-3.5 w-3.5 inline mr-1.5" />
-                              Last name
+                              Last name <span className="text-red-500">*</span>
                             </Label>
                             <Input
                               id="last_name"
@@ -418,7 +496,7 @@ export default function VCardForm() {
                         <div className="space-y-1.5">
                           <Label htmlFor="email" className="text-sm font-medium">
                             <Mail className="h-3.5 w-3.5 inline mr-1.5" />
-                            Email
+                            Email <span className="text-red-500">*</span>
                           </Label>
                           <Input
                             id="email"
@@ -542,28 +620,29 @@ export default function VCardForm() {
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                             <div className="space-y-1.5">
                               <Label htmlFor="mobile_number" className="text-sm font-medium">
-                                Mobile Number
+                                Mobile Number <span className="text-red-500">*</span>
                               </Label>
-                              <Input
+                              <PhoneNumberInput
                                 id="mobile_number"
                                 name="mobile_number"
                                 value={formData.mobile_number || ""}
-                                onChange={handleInputChange}
-                                placeholder="+1 (555) 123-4567"
-                                className="border-muted-foreground/20"
+                                onChange={handlePhoneChange('mobile_number')}
+                                placeholder="XXXXX XXXXX"
+                                required
+                                hideLabel
                               />
                             </div>
                             <div className="space-y-1.5">
                               <Label htmlFor="work_number" className="text-sm font-medium">
                                 Work Number
                               </Label>
-                              <Input
+                              <PhoneNumberInput
                                 id="work_number"
                                 name="work_number"
                                 value={formData.work_number || ""}
-                                onChange={handleInputChange}
-                                placeholder="+1 (555) 987-6543"
-                                className="border-muted-foreground/20"
+                                onChange={handlePhoneChange('work_number')}
+                                placeholder="XXXXX XXXXX"
+                                hideLabel
                               />
                             </div>
                           </div>
