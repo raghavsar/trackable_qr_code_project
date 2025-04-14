@@ -82,8 +82,10 @@ services:
       - ANALYTICS_SERVICE_URL=http://analytics-service:8004
       - REDIRECT_SERVICE_URL=http://redirect-service:8005
       - PORT=8000
-      - FRONTEND_URL=http://192.168.7.60:5173
-      - CORS_ORIGINS=["http://localhost:5173", "http://192.168.7.60:5173", "http://192.168.7.60:8000", "http://192.169.7.60:5173", "https://qr.phonon.io"]
+      - FRONTEND_URL=https://qr.phonon.io
+      - CORS_ORIGINS=["http://localhost:5173", "http://192.168.7.60:5173", "http://192.168.7.60:8000", "https://qr.phonon.io"]
+      - FORWARDED_ALLOW_IPS=*
+      - TRUSTED_HOSTS=qr.phonon.io
     command: ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers", "--forwarded-allow-ips=*"]
 
   user-service:

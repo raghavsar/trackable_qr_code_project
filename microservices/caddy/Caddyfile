@@ -14,8 +14,12 @@ qr.phonon.io {
     # Proxy them to the api-gateway service on port 8000
     handle_path /api/* {
         reverse_proxy api-gateway:8000 {
-            # Trust the upstream AWS Load Balancer
-            trusted_proxies 10.20.0.0/19
+            # Trust all IPs for testing - in production, limit this to your actual proxy IPs
+            trusted_proxies private_ranges
+            header_up X-Real-IP {remote_host}
+            header_up X-Forwarded-For {remote_host}
+            header_up X-Forwarded-Proto {scheme}
+            header_up X-Forwarded-Host {host}
         }
     }
 
