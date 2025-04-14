@@ -546,7 +546,7 @@ async def analytics_stream(
                 logger.info("Token extracted from Authorization header")
             else:
                 # Try to get from query params
-                access_token = request.query_params.get("access_token")
+                access_token = request.query_params.get("access_token") or request.query_params.get("token")
                 if access_token:
                     logger.info("Token extracted from query parameters")
                 else:
