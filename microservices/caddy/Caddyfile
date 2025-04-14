@@ -1,3 +1,17 @@
+{
+    # Global options
+    debug
+    log {
+        output file /data/access.log {
+            roll_size 10MB
+            roll_keep 10
+            roll_keep_for 168h
+        }
+        format json
+        level INFO
+    }
+}
+
 qr.phonon.io {
     # Use a self-signed certificate for now
     tls internal
@@ -14,12 +28,21 @@ qr.phonon.io {
     # Proxy them to the api-gateway service on port 8000
     handle_path /api/* {
         reverse_proxy api-gateway:8000 {
-            # Trust all IPs for testing - in production, limit this to your actual proxy IPs
-            trusted_proxies private_ranges
+            # Trust all IPs for testing
+            trusted_proxies private_ranges cloudflare
+            
+            # Forward headers
+            header_up Host {host}
             header_up X-Real-IP {remote_host}
             header_up X-Forwarded-For {remote_host}
             header_up X-Forwarded-Proto {scheme}
             header_up X-Forwarded-Host {host}
+            header_up X-Forwarded-Port {port}
+            
+            # Transport configuration
+            transport http {
+                tls_insecure_skip_verify
+            }
         }
     }
 
@@ -32,10 +55,14 @@ qr.phonon.io {
     #     try_files {path} /index.html
     # }
 
-    # Logging (optional, Caddy logs by default)
+    # Logging for this specific site
     log {
-        output stderr
-        level INFO
-        format json # Use Caddy's standard JSON log format
+        output file /data/qr.phonon.io.log {
+            roll_size 10MB
+            roll_keep 10
+            roll_keep_for 168h
+        }
+        format json
+        level DEBUG # More detailed logging for debugging
     }
 } 
