@@ -28,16 +28,12 @@ qr.phonon.io {
     # Proxy them to the api-gateway service on port 8000
     handle_path /api/* {
         reverse_proxy api-gateway:8000 {
-            # Trust all IPs for testing
-            trusted_proxies private_ranges cloudflare
+            # Trust private networks and Cloudflare IPs
+            trusted_proxies private_ranges
             
-            # Forward headers
+            # Only forward essential headers
             header_up Host {host}
             header_up X-Real-IP {remote_host}
-            header_up X-Forwarded-For {remote_host}
-            header_up X-Forwarded-Proto {scheme}
-            header_up X-Forwarded-Host {host}
-            header_up X-Forwarded-Port {port}
             
             # Transport configuration
             transport http {
