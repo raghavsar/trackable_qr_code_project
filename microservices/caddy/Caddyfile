@@ -1,64 +1,52 @@
 {
-    # Global options
-    debug
-    log {
-        output file /data/access.log {
-            roll_size 10MB
-            roll_keep 10
-            roll_keep_for 168h
-        }
-        format json
-        level INFO
-    }
+	# Global options
+	debug
+
+	log {
+		output file /data/access.log {
+			roll_size 10MB
+			roll_keep 10
+			roll_keep_for 168h
+		}
+		format json
+		level INFO
+	}
 }
 
 qr.phonon.io {
-    # Use a self-signed certificate for now
-    tls internal
+	# Use a self-signed certificate for now
+	tls internal
 
-    # Enable HTTP compression
-    encode gzip zstd
+	# Enable HTTP compression
+	encode gzip zstd
 
-    # Handle ACME challenge requests for Let's Encrypt SSL
-    handle /.well-known/acme-challenge/* {
-        respond 200
-    }
+	# Handle ACME challenge requests for Let's Encrypt SSL
+	handle /.well-known/acme-challenge/* {
+		respond "OK" 200
+	}
 
-    # Handle requests starting with /api/
-    # Proxy them to the api-gateway service on port 8000
-    handle_path /api/* {
-        reverse_proxy api-gateway:8000 {
-            # Trust private networks and Cloudflare IPs
-            trusted_proxies private_ranges
-            
-            # Only forward essential headers
-            header_up Host {host}
-            header_up X-Real-IP {remote_host}
-            
-            # Transport configuration
-            transport http {
-                tls_insecure_skip_verify
-            }
-        }
-    }
+	# Handle requests starting with /api/
+	handle_path /api/* {
+		reverse_proxy api-gateway:8000 {
+			trusted_proxies private_ranges
 
-    # TODO: Add a 'handle' block here if you also want Caddy
-    # to serve your frontend application from the same domain.
-    # Example:
-    # handle {
-    #     root * /path/to/your/frontend/build
-    #     file_server
-    #     try_files {path} /index.html
-    # }
+			header_up Host {host}
+			header_up X-Real-IP {remote_host}
 
-    # Logging for this specific site
-    log {
-        output file /data/qr.phonon.io.log {
-            roll_size 10MB
-            roll_keep 10
-            roll_keep_for 168h
-        }
-        format json
-        level DEBUG # More detailed logging for debugging
-    }
-} 
+			transport https {
+				tls_insecure_skip_verify
+			}
+		}
+	}
+
+	# Logging for this specific site
+	log {
+		output file /data/qr.phonon.io.log {
+			roll_size 10MB
+			roll_keep 10
+			roll_keep_for 168h
+		}
+		format json
+		level DEBUG
+	}
+}
