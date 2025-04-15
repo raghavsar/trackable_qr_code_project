@@ -27,13 +27,15 @@ qr.phonon.io {
 
 	# Handle requests starting with /api/
 	handle_path /api/* {
-		reverse_proxy api-gateway:8000 {
+		# Specify HTTPS scheme in the upstream address
+		reverse_proxy https://api-gateway:8000 {
 			trusted_proxies private_ranges
 
 			header_up Host {host}
 			header_up X-Real-IP {remote_host}
 
-			transport https {
+			# Configure TLS settings for the HTTPS upstream connection
+			transport http { 
 				tls_insecure_skip_verify
 			}
 		}
