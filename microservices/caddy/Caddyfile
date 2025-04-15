@@ -14,8 +14,8 @@
 }
 
 qr.phonon.io {
-	# Use a self-signed certificate for now
-	tls internal
+	# Use the provided certificate and key
+	tls /etc/caddy/certs/qr.phonon.io.crt /etc/caddy/certs/qr.phonon.io.key
 
 	# Enable HTTP compression
 	encode gzip zstd
