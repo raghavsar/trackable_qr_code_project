@@ -7,7 +7,7 @@ const API_VERSION = import.meta.env.VITE_API_VERSION || 'v1'
 const apiUrl = API_URL.replace(':5173', ':8000');
 
 export const axiosInstance = axios.create({
-  baseURL: `${apiUrl}/api/${API_VERSION}`,
+  baseURL: `${apiUrl}/${API_VERSION}`,
   headers: {
     'Content-Type': 'application/json',
   },
