@@ -222,6 +222,8 @@ services:
     volumes:
       # Mount the Caddyfile
       - ./caddy/Caddyfile:/etc/caddy/Caddyfile
+      # Mount the TLS certificates
+      - ./caddy/certs:/etc/caddy/certs:ro
       - caddy_data:/data                 # Persists certificates and other Caddy state
       - ./caddy/logs:/data/logs          # Store logs
     networks:
