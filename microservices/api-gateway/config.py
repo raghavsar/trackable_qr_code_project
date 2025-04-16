@@ -44,13 +44,13 @@ class Settings(BaseSettings):
     JWT_SECRET: str = get_required_env("JWT_SECRET")
     JWT_ALGORITHM: str = "HS256"
 
-    # Service URLs
-    USER_SERVICE_URL: str
-    VCARD_SERVICE_URL: str
-    QR_SERVICE_URL: str
-    ANALYTICS_SERVICE_URL: str
-    REDIRECT_SERVICE_URL: str
-    FRONTEND_URL: str
+    # Service URLs - Prioritize internal Docker URLs if available
+    USER_SERVICE_URL: str = os.getenv("USER_SERVICE_URL_INTERNAL", get_required_env("USER_SERVICE_URL"))
+    VCARD_SERVICE_URL: str = os.getenv("VCARD_SERVICE_URL_INTERNAL", get_required_env("VCARD_SERVICE_URL"))
+    QR_SERVICE_URL: str = os.getenv("QR_SERVICE_URL_INTERNAL", get_required_env("QR_SERVICE_URL"))
+    ANALYTICS_SERVICE_URL: str = os.getenv("ANALYTICS_SERVICE_URL_INTERNAL", get_required_env("ANALYTICS_SERVICE_URL"))
+    REDIRECT_SERVICE_URL: str = os.getenv("REDIRECT_SERVICE_URL_INTERNAL", get_required_env("REDIRECT_SERVICE_URL"))
+    FRONTEND_URL: str = get_required_env("FRONTEND_URL")
     
     # CORS Settings
     CORS_ORIGINS: List[str] = get_cors_origins()

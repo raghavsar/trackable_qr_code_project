@@ -36,6 +36,16 @@ qr.phonon.io {
 		}
 	}
 
+	# Handle MinIO requests
+	handle_path /minio/* {
+		uri strip_prefix /minio
+		reverse_proxy http://minio:9000 {
+			trusted_proxies private_ranges
+			header_up Host {host}
+			header_up X-Real-IP {remote_host}
+		}
+	}
+
 	# Logging for this specific site
 	log {
 		output file /data/qr.phonon.io.log {
