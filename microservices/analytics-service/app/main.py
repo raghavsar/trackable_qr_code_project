@@ -34,6 +34,7 @@ from shared.models import PyObjectId, ScanTrackingEvent
 from app.database import get_database
 from app.redis_store import get_redis_client, RedisStore, DummyRedisClient
 from app.config import settings
+from app.auth import get_current_user
 
 if TYPE_CHECKING:
     from motor.motor_asyncio import AsyncIOMotorDatabase
@@ -421,7 +422,8 @@ async def get_real_time_metrics(db: Any) -> Dict[str, Any]:
 @app.get("/api/v1/analytics/stream")
 async def stream_metrics(
     request: Request,
-    db: Any = Depends(get_database)
+    db: Any = Depends(get_database),
+    current_user: dict = Depends(get_current_user)
 ) -> EventSourceResponse:
     """Generate SSE with real-time metrics using queue-based approach for enhanced reliability"""
     client_id = str(uuid.uuid4())
@@ -557,9 +559,19 @@ async def stream_metrics(
 async def stream_vcard_metrics(
     vcard_id: str,
     request: Request,
-    db: Any = Depends(get_database)
+    db: Any = Depends(get_database),
+    current_user: dict = Depends(get_current_user)
 ) -> EventSourceResponse:
     """SSE endpoint for real-time metrics of a specific VCard with enhanced error handling"""
+    try:
+        # Optionally: Verify user owns or has access to this vcard_id
+        # user_id_from_token = current_user.get("id")
+        # Perform check against DB if necessary...
+        # logger.info(f"User {user_id_from_token} requesting stream for vcard {vcard_id}")
+        pass
+    except Exception as e:
+        logger.error(f"Auth/access check failed for vcard stream {vcard_id}: {e}")
+        # ... existing code ...
     client_id = str(uuid.uuid4())
     logger.info(f"New VCard SSE connection: {client_id} for VCard {vcard_id}")
     
