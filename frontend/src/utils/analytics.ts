@@ -80,7 +80,13 @@ export const trackEvent = async (
     const apiUrl = import.meta.env.VITE_API_URL;
     console.log(`📊 Tracking ${actionType} event for VCard ${vcardId}`);
     
-    const response = await fetch(`${apiUrl}/api/v1/analytics/scan`, {
+    // Ensure apiUrl is defined
+    if (!apiUrl) {
+      console.error('API URL is not defined');
+      return false;
+    }
+
+    const response = await fetch(`${apiUrl}/v1/analytics/scan`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'

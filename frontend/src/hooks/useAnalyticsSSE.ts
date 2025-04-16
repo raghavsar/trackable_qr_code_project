@@ -41,8 +41,8 @@ export const useAnalyticsSSE = ({ vcardId }: UseAnalyticsSSEProps = {}) => {
     try {
       // Determine the correct endpoint based on whether we have a vcardId
       const endpoint = vcardId 
-        ? `${API_URL}/api/v1/analytics/vcard/${vcardId}?timeRange=30d`
-        : `${API_URL}/api/v1/analytics/metrics?timeRange=30d`;
+        ? `${API_URL}/v1/analytics/vcard/${vcardId}?timeRange=30d`
+        : `${API_URL}/v1/analytics/metrics?timeRange=30d`;
       
       console.log(`📊 Fetching initial metrics from endpoint: ${endpoint}`);
       
@@ -312,8 +312,8 @@ export const useAnalyticsSSE = ({ vcardId }: UseAnalyticsSSEProps = {}) => {
       
       // Determine SSE endpoint based on vcardId
       const sseEndpoint = vcardId
-        ? `${API_URL}/api/v1/analytics/vcard/${vcardId}/stream`
-        : `${API_URL}/api/v1/analytics/stream`;
+        ? `${API_URL}/v1/analytics/vcard/${vcardId}/stream`
+        : `${API_URL}/v1/analytics/stream`;
         
       console.log(`🔌 Connecting to SSE endpoint: ${sseEndpoint}`);
       

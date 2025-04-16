@@ -112,11 +112,12 @@ export default function VCardRedirect() {
       // Track download using our new utility function
       await trackVcfDownload(vcard._id, vcard.user_id);
       
-      // Get API URL from environment
       const apiUrl = import.meta.env.VITE_API_URL;
+      if (!apiUrl) {
+          throw new Error('API URL not configured');
+      }
       
-      // Download VCF
-      const response = await fetch(`${apiUrl}/api/v1/vcards/${vcard._id}/download`, {
+      const response = await fetch(`${apiUrl}/v1/vcards/${vcard._id}/download`, {
         headers: {
           'Accept': 'text/vcard'
         }
