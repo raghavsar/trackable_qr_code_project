@@ -32,7 +32,7 @@ const useQRGeneration = () => {
     const generateQR = async (vCardData: Record<string, any>, designOptions: QRDesignOptions = defaultQRStyle) => {
         setState(prev => ({ ...prev, isLoading: true, error: null }));
         try {
-            const response = await fetch(`${import.meta.env.VITE_API_URL}/qr/generate`, {
+            const response = await fetch(`${import.meta.env.VITE_API_URL}/api/v1/qr/generate`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -61,7 +61,7 @@ const useQRGeneration = () => {
     const previewQR = async (vCardData: Record<string, any>, designOptions: QRDesignOptions = defaultQRStyle) => {
         setState(prev => ({ ...prev, isLoading: true, error: null }));
         try {
-            const response = await fetch(`${import.meta.env.VITE_API_URL}/qr/preview`, {
+            const response = await fetch(`${import.meta.env.VITE_API_URL}/api/v1/qr/preview`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -93,4 +93,4 @@ const useQRGeneration = () => {
     };
 };
 
-export default useQRGeneration; 
+export default useQRGeneration;

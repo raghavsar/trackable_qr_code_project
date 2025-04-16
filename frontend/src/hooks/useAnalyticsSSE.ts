@@ -40,23 +40,23 @@ export const useAnalyticsSSE = ({ vcardId }: UseAnalyticsSSEProps = {}) => {
   const fetchInitialMetrics = async () => {
     try {
       // Determine the correct endpoint based on whether we have a vcardId
-      const endpoint = vcardId 
-        ? `${API_URL}/v1/analytics/vcard/${vcardId}?timeRange=30d`
-        : `${API_URL}/v1/analytics/metrics?timeRange=30d`;
-      
+      const endpoint = vcardId
+        ? `${API_URL}/api/v1/analytics/vcard/${vcardId}?timeRange=30d`
+        : `${API_URL}/api/v1/analytics/metrics?timeRange=30d`;
+
       console.log(`📊 Fetching initial metrics from endpoint: ${endpoint}`);
-      
+
       const token = localStorage.getItem('token');
       if (!token) {
         console.error('❌ No authentication token found');
         setError(new Error('Authentication required'));
         return;
       }
-      
+
       // Add retry logic for initial data fetch
       let retries = 0;
       const maxRetries = 3;
-      
+
       while (retries < maxRetries) {
         try {
           const response = await fetch(
@@ -67,7 +67,7 @@ export const useAnalyticsSSE = ({ vcardId }: UseAnalyticsSSEProps = {}) => {
               }
             }
           );
-          
+
           if (!response.ok) {
             console.error(`❌ HTTP error fetching initial metrics: ${response.status} ${response.statusText}`);
             if (response.status === 401) {
@@ -78,12 +78,12 @@ export const useAnalyticsSSE = ({ vcardId }: UseAnalyticsSSEProps = {}) => {
             }
             throw new Error(`HTTP error! status: ${response.status}`);
           }
-          
+
           const data = await response.json();
           console.log('📊 Initial metrics data received:', data);
-          
+
           // If we get here, the fetch was successful
-          
+
           // Ensure the data is properly structured before setting state
           if (data) {
             setMetrics(prevMetrics => {
@@ -95,14 +95,14 @@ export const useAnalyticsSSE = ({ vcardId }: UseAnalyticsSSEProps = {}) => {
                 mobile_scans: data.mobile_scans ?? prevMetrics?.mobile_scans ?? 0,
                 contact_adds: data.contact_adds ?? prevMetrics?.contact_adds ?? 0,
                 vcf_downloads: data.vcf_downloads ?? prevMetrics?.vcf_downloads ?? 0,
-                recent_scans: Array.isArray(data.recent_scans) 
-                  ? data.recent_scans 
+                recent_scans: Array.isArray(data.recent_scans)
+                  ? data.recent_scans
                   : prevMetrics?.recent_scans ?? []
               };
               console.log('📊 Initial metrics state set to:', newMetrics);
               return newMetrics;
             });
-            
+
             // Exit the retry loop if successful
             break;
           } else {
@@ -112,12 +112,12 @@ export const useAnalyticsSSE = ({ vcardId }: UseAnalyticsSSEProps = {}) => {
         } catch (fetchError) {
           retries++;
           console.warn(`⚠️ Retry ${retries}/${maxRetries} for initial metrics failed:`, fetchError);
-          
+
           if (retries >= maxRetries) {
             console.error(`❌ All ${maxRetries} retries failed. Giving up.`);
             throw fetchError;
           }
-          
+
           // Exponential backoff delay
           const delay = 1000 * Math.pow(2, retries);
           console.log(`⏱️ Waiting ${delay}ms before retry...`);
@@ -134,12 +134,12 @@ export const useAnalyticsSSE = ({ vcardId }: UseAnalyticsSSEProps = {}) => {
   const handleSSEEvent = useCallback((event: MessageEvent) => {
     try {
       console.log(`📨 SSE event received: ${event.type}`, event);
-      
+
       // Reset heartbeat timeout on any event
       if (heartbeatTimeoutRef.current) {
         clearTimeout(heartbeatTimeoutRef.current);
       }
-      
+
       // Set new heartbeat timeout
       heartbeatTimeoutRef.current = setTimeout(() => {
         console.warn('⚠️ No heartbeat received in the last 30 seconds');
@@ -148,11 +148,11 @@ export const useAnalyticsSSE = ({ vcardId }: UseAnalyticsSSEProps = {}) => {
           status: 'disconnected',
           error: 'Connection timeout - no heartbeat received'
         }));
-        
+
         // Attempt to reconnect
         reconnectSSE();
       }, HEARTBEAT_TIMEOUT);
-      
+
       // Handle different event types
       switch (event.type) {
         case 'metrics':
@@ -160,7 +160,7 @@ export const useAnalyticsSSE = ({ vcardId }: UseAnalyticsSSEProps = {}) => {
             const parsedData = JSON.parse(event.data);
             console.log('📊 Metrics data received (RAW):', event.data);
             console.log('📊 Metrics data parsed:', parsedData);
-            
+
             // Simple extraction of metrics data - no longer looking for nested structures
             // since we fixed the backend to always send metrics at the root level
             setMetrics(prevMetrics => {
@@ -172,11 +172,11 @@ export const useAnalyticsSSE = ({ vcardId }: UseAnalyticsSSEProps = {}) => {
                 mobile_scans: parsedData.mobile_scans ?? prevMetrics?.mobile_scans ?? 0,
                 contact_adds: parsedData.contact_adds ?? prevMetrics?.contact_adds ?? 0,
                 vcf_downloads: parsedData.vcf_downloads ?? prevMetrics?.vcf_downloads ?? 0,
-                recent_scans: Array.isArray(parsedData.recent_scans) 
-                  ? parsedData.recent_scans 
+                recent_scans: Array.isArray(parsedData.recent_scans)
+                  ? parsedData.recent_scans
                   : prevMetrics?.recent_scans ?? []
               };
-              
+
               console.log('📊 New metrics state after update:', newMetrics);
               return newMetrics;
             });
@@ -184,7 +184,7 @@ export const useAnalyticsSSE = ({ vcardId }: UseAnalyticsSSEProps = {}) => {
             console.error('❌ Error parsing metrics data:', err, 'Raw data:', event.data);
           }
           break;
-          
+
         case 'heartbeat':
           const heartbeatData = JSON.parse(event.data);
           console.log('💓 Heartbeat received:', heartbeatData);
@@ -195,7 +195,7 @@ export const useAnalyticsSSE = ({ vcardId }: UseAnalyticsSSEProps = {}) => {
             lastHeartbeat: heartbeatData.timestamp
           }));
           break;
-          
+
         case 'connection':
           const connectionData = JSON.parse(event.data);
           console.log('🔌 Connection event:', connectionData);
@@ -207,7 +207,7 @@ export const useAnalyticsSSE = ({ vcardId }: UseAnalyticsSSEProps = {}) => {
             reconnectAttempt: 0
           }));
           break;
-          
+
         case 'disconnection':
           const disconnectionData = JSON.parse(event.data);
           console.log('🔌 Disconnection event:', disconnectionData);
@@ -216,7 +216,7 @@ export const useAnalyticsSSE = ({ vcardId }: UseAnalyticsSSEProps = {}) => {
             status: 'disconnected'
           }));
           break;
-          
+
         case 'error':
           const errorData = JSON.parse(event.data);
           console.error('❌ Error event received:', errorData);
@@ -226,13 +226,13 @@ export const useAnalyticsSSE = ({ vcardId }: UseAnalyticsSSEProps = {}) => {
             error: errorData.error
           }));
           break;
-          
+
         case 'message':
           try {
             // Default message event (for backward compatibility)
             const data = JSON.parse(event.data);
             console.log('📨 Default message event data (RAW):', event.data);
-            
+
             // Similar simplified extraction for message events
             setMetrics(prevMetrics => {
               const newMetrics = {
@@ -243,11 +243,11 @@ export const useAnalyticsSSE = ({ vcardId }: UseAnalyticsSSEProps = {}) => {
                 mobile_scans: data.mobile_scans ?? prevMetrics?.mobile_scans ?? 0,
                 contact_adds: data.contact_adds ?? prevMetrics?.contact_adds ?? 0,
                 vcf_downloads: data.vcf_downloads ?? prevMetrics?.vcf_downloads ?? 0,
-                recent_scans: Array.isArray(data.recent_scans) 
-                  ? data.recent_scans 
+                recent_scans: Array.isArray(data.recent_scans)
+                  ? data.recent_scans
                   : prevMetrics?.recent_scans ?? []
               };
-              
+
               console.log('📨 New metrics state after message update:', newMetrics);
               return newMetrics;
             });
@@ -255,7 +255,7 @@ export const useAnalyticsSSE = ({ vcardId }: UseAnalyticsSSEProps = {}) => {
             console.error('❌ Error parsing message data:', err, 'Raw data:', event.data);
           }
           break;
-          
+
         default:
           console.warn(`⚠️ Unknown event type: ${event.type}`);
       }
@@ -271,7 +271,7 @@ export const useAnalyticsSSE = ({ vcardId }: UseAnalyticsSSEProps = {}) => {
       clearTimeout(reconnectTimeoutRef.current);
       reconnectTimeoutRef.current = null;
     }
-    
+
     if (retryCount >= MAX_RETRIES) {
       console.error(`❌ Maximum retry attempts (${MAX_RETRIES}) reached`);
       setConnectionStatus(prev => ({
@@ -281,10 +281,10 @@ export const useAnalyticsSSE = ({ vcardId }: UseAnalyticsSSEProps = {}) => {
       }));
       return;
     }
-    
+
     const delay = BASE_RETRY_DELAY * Math.pow(2, retryCount);
     console.log(`🔄 Scheduling reconnect in ${delay}ms (attempt ${retryCount + 1}/${MAX_RETRIES})`);
-    
+
     reconnectTimeoutRef.current = setTimeout(() => {
       setRetryCount(prev => prev + 1);
       connectSSE();
@@ -298,33 +298,33 @@ export const useAnalyticsSSE = ({ vcardId }: UseAnalyticsSSEProps = {}) => {
       eventSourceRef.current.close();
       eventSourceRef.current = null;
     }
-    
+
     try {
       setConnectionStatus(prev => ({
         ...prev,
         status: 'connecting'
       }));
-      
+
       const token = localStorage.getItem('token');
       if (!token) {
         throw new Error('Authentication required');
       }
-      
+
       // Determine SSE endpoint based on vcardId
       const sseEndpoint = vcardId
-        ? `${API_URL}/v1/analytics/vcard/${vcardId}/stream`
-        : `${API_URL}/v1/analytics/stream`;
-        
+        ? `${API_URL}/api/v1/analytics/vcard/${vcardId}/stream`
+        : `${API_URL}/api/v1/analytics/stream`;
+
       console.log(`🔌 Connecting to SSE endpoint: ${sseEndpoint}`);
-      
+
       // Create URL with auth token in the query parameter
       const url = new URL(sseEndpoint);
       url.searchParams.append('token', token);
-      
+
       // Create new EventSource with the token in the URL
       const eventSource = new EventSource(url.toString());
       eventSourceRef.current = eventSource;
-      
+
       // Set up event listeners
       eventSource.onopen = (e) => {
         console.log('🔌 SSE connection opened:', e);
@@ -337,7 +337,7 @@ export const useAnalyticsSSE = ({ vcardId }: UseAnalyticsSSEProps = {}) => {
         setIsConnected(true);
         setRetryCount(0);
       };
-      
+
       eventSource.onerror = (e) => {
         console.error('❌ SSE connection error:', e);
         setConnectionStatus(prev => ({
@@ -346,25 +346,25 @@ export const useAnalyticsSSE = ({ vcardId }: UseAnalyticsSSEProps = {}) => {
           error: 'Connection error'
         }));
         setIsConnected(false);
-        
+
         // Close and attempt to reconnect
         eventSource.close();
         eventSourceRef.current = null;
         reconnectSSE();
       };
-      
+
       // Set up message event listeners using addEventListener instead of onmessage
       eventSource.addEventListener('message', handleSSEEvent);
       eventSource.addEventListener('metrics', handleSSEEvent);
       eventSource.addEventListener('heartbeat', handleSSEEvent);
       eventSource.addEventListener('connection', handleSSEEvent);
       eventSource.addEventListener('error', handleSSEEvent);
-      
+
       // Set heartbeat timeout
       if (heartbeatTimeoutRef.current) {
         clearTimeout(heartbeatTimeoutRef.current);
       }
-      
+
       heartbeatTimeoutRef.current = setTimeout(() => {
         console.warn('⚠️ Initial heartbeat timeout');
         setConnectionStatus(prev => ({
@@ -372,7 +372,7 @@ export const useAnalyticsSSE = ({ vcardId }: UseAnalyticsSSEProps = {}) => {
           status: 'error',
           error: 'No initial heartbeat received'
         }));
-        
+
         // Close and reconnect
         eventSource.close();
         eventSourceRef.current = null;
@@ -388,7 +388,7 @@ export const useAnalyticsSSE = ({ vcardId }: UseAnalyticsSSEProps = {}) => {
         reconnectAttempt: prev.reconnectAttempt + 1
       }));
       setIsConnected(false);
-      
+
       // Schedule reconnect
       reconnectSSE();
     }
@@ -397,28 +397,28 @@ export const useAnalyticsSSE = ({ vcardId }: UseAnalyticsSSEProps = {}) => {
   // Setup and cleanup effect
   useEffect(() => {
     console.log('🚀 Initializing Analytics SSE hook');
-    
+
     // First fetch initial metrics
     fetchInitialMetrics();
-    
+
     // Then establish SSE connection
     connectSSE();
-    
+
     // Cleanup function
     return () => {
       console.log('🧹 Cleaning up Analytics SSE connections');
-      
+
       if (eventSourceRef.current) {
         console.log('🔌 Closing SSE connection');
         eventSourceRef.current.close();
         eventSourceRef.current = null;
       }
-      
+
       if (reconnectTimeoutRef.current) {
         clearTimeout(reconnectTimeoutRef.current);
         reconnectTimeoutRef.current = null;
       }
-      
+
       if (heartbeatTimeoutRef.current) {
         clearTimeout(heartbeatTimeoutRef.current);
         heartbeatTimeoutRef.current = null;

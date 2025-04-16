@@ -21,12 +21,12 @@ export default function VCardRedirect() {
         if (!id) return;
         const data = await qrService.getVCard(id);
         setVcard(data);
-        
+
         // Only track events if the page is visible
         if (document.visibilityState === 'visible') {
           // Check if we're in the /r/ route or direct navigation, which indicates a QR scan
           const isQRScan = window.location.pathname.startsWith('/r/') && document.referrer === '';
-          
+
           // Use our new unified tracking function
           await trackVCardPageLoad(id, data.user_id, isQRScan);
         } else {
@@ -41,16 +41,16 @@ export default function VCardRedirect() {
     };
 
     fetchVCard();
-    
+
     // Set up visibility change listener
     const handleVisibilityChange = () => {
       // Do not track anything on visibility change to prevent background tab issues
       console.log(`Page visibility changed to: ${document.visibilityState}`);
     };
-    
+
     // Add visibility change listener
     document.addEventListener('visibilitychange', handleVisibilityChange);
-    
+
     // Clean up
     return () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
@@ -60,17 +60,17 @@ export default function VCardRedirect() {
   // Compute formatted home address from address object
   const getFormattedHomeAddress = (address: VCardResponse['address']) => {
     if (!address) return '';
-    
+
     const parts = [];
     if (address.street) parts.push(address.street);
     if (address.city) parts.push(address.city);
     if (address.state) parts.push(address.state);
     if (address.zip_code) parts.push(address.zip_code);
     if (address.country) parts.push(address.country);
-    
+
     return parts.join(', ');
   };
-  
+
   // Fixed work address and Google Maps URL
   const workGoogleMapsUrl = "https://maps.app.goo.gl/99bjahgR1SJdWXbb7";
   const workAddress = "106, Blue Diamond Complex, Fatehgunj, Vadodara 390002, Gujarat, India";
@@ -84,13 +84,13 @@ export default function VCardRedirect() {
         toast.error('Invalid VCard data');
         return;
       }
-      
+
       // Track contact add using our new utility function
       const success = await trackContactAdd(vcard._id, vcard.user_id);
-      
+
       if (success) {
         toast.success('Contact added successfully!');
-        
+
         // Trigger VCF download after tracking is complete
         await handleDownloadVCF();
       } else {
@@ -108,34 +108,34 @@ export default function VCardRedirect() {
   const handleDownloadVCF = async () => {
     try {
       if (!vcard) return;
-      
+
       // Track download using our new utility function
       await trackVcfDownload(vcard._id, vcard.user_id);
-      
+
       const apiUrl = import.meta.env.VITE_API_URL;
       if (!apiUrl) {
           throw new Error('API URL not configured');
       }
-      
-      const response = await fetch(`${apiUrl}/v1/vcards/${vcard._id}/download`, {
+
+      const response = await fetch(`${apiUrl}/api/v1/vcards/${vcard._id}/download`, {
         headers: {
           'Accept': 'text/vcard'
         }
       });
-      
+
       if (!response.ok) {
         throw new Error('Failed to download contact');
       }
-      
+
       // Get filename from Content-Disposition header or create a default one
       const contentDisposition = response.headers.get('content-disposition');
       const filename = contentDisposition
         ? contentDisposition.split('filename=')[1]?.replace(/"/g, '')
         : `${vcard.first_name}_${vcard.last_name}.vcf`;
-      
+
       // Create blob with proper MIME type
       const blob = new Blob([await response.text()], { type: 'text/vcard' });
-      
+
       // Create download link
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -143,11 +143,11 @@ export default function VCardRedirect() {
       a.download = filename;
       document.body.appendChild(a);
       a.click();
-      
+
       // Cleanup
       window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
-      
+
       toast.success('Contact downloaded successfully');
     } catch (error) {
       console.error('Failed to download VCF:', error);
@@ -180,9 +180,9 @@ export default function VCardRedirect() {
     <div className="min-h-screen bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
       <Card className="max-w-3xl mx-auto">
         <CardHeader className="text-center">
-          <img 
-            src="/Phonon Logo.png" 
-            alt="Phonon Logo" 
+          <img
+            src="/Phonon Logo.png"
+            alt="Phonon Logo"
             className="h-12 mx-auto mb-4"
           />
           <CardTitle className="text-2xl font-bold">Digital Business Card</CardTitle>
@@ -213,7 +213,7 @@ export default function VCardRedirect() {
                 </a>
               </div>
             )}
-            
+
             {vcard.mobile_number && (
               <div className="flex items-center space-x-3">
                 <Phone className="w-5 h-5 text-gray-500" />
@@ -222,7 +222,7 @@ export default function VCardRedirect() {
                 </a>
               </div>
             )}
-            
+
             {vcard.work_number && (
               <div className="flex items-center space-x-3">
                 <Building className="w-5 h-5 text-gray-500" />
@@ -231,7 +231,7 @@ export default function VCardRedirect() {
                 </a>
               </div>
             )}
-            
+
             {vcard.website && (
               <div className="flex items-center space-x-3">
                 <Globe className="w-5 h-5 text-gray-500" />
@@ -246,10 +246,10 @@ export default function VCardRedirect() {
               <Briefcase className="w-6 h-6 text-gray-500 mt-0.5 flex-shrink-0" />
               <div>
                 <span className="text-sm font-medium text-gray-500 block">Work Address</span>
-                <a 
-                  href={workGoogleMapsUrl} 
-                  target="_blank" 
-                  rel="noopener noreferrer" 
+                <a
+                  href={workGoogleMapsUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
                   className="text-blue-600 hover:underline leading-relaxed"
                 >
                   {workAddress}
@@ -304,4 +304,4 @@ export default function VCardRedirect() {
       </Card>
     </div>
   );
-} 
+}

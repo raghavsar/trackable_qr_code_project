@@ -43,17 +43,17 @@ async def verify_token(credentials: HTTPAuthorizationCredentials = Depends(secur
         token = credentials.credentials
         logger.info("=== Starting token verification ===")
         logger.info(f"Token prefix: {token[:20]}...")
-        
+
         try:
             # Log JWT secret configuration
             logger.info(f"Using JWT algorithm: {settings.JWT_ALGORITHM}")
             logger.info(f"JWT secret key length: {len(settings.JWT_SECRET)}")
-            
+
             # Decode without verification first to check token structure
             logger.info("Attempting preliminary token decode without verification")
             unverified_payload = jwt.decode(token, options={"verify_signature": False})
             logger.info(f"Preliminary token payload: {json.dumps(unverified_payload)}")
-            
+
             # Now decode with verification
             logger.info("Attempting token verification with signature")
             payload = jwt.decode(
@@ -62,7 +62,7 @@ async def verify_token(credentials: HTTPAuthorizationCredentials = Depends(secur
                 algorithms=[settings.JWT_ALGORITHM]
             )
             logger.info(f"Token successfully verified. Full payload: {json.dumps(payload)}")
-            
+
             user_id = payload.get("sub")
             if not user_id:
                 logger.error("Token payload missing 'sub' claim")
@@ -71,10 +71,10 @@ async def verify_token(credentials: HTTPAuthorizationCredentials = Depends(secur
                     status_code=status.HTTP_401_UNAUTHORIZED,
                     detail="Invalid token: missing user ID"
                 )
-                
+
             logger.info(f"Successfully extracted user_id: {user_id}")
             return user_id
-            
+
         except ExpiredSignatureError:
             logger.error("Token validation failed: Token has expired")
             raise HTTPException(
@@ -87,7 +87,7 @@ async def verify_token(credentials: HTTPAuthorizationCredentials = Depends(secur
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail=f"Invalid token: {str(e)}"
             )
-            
+
     except Exception as e:
         logger.error("=== Token verification failed ===")
         logger.error(f"Error type: {type(e).__name__}")
@@ -101,7 +101,7 @@ async def verify_token(credentials: HTTPAuthorizationCredentials = Depends(secur
 async def forward_request(request: Request, service_url: str, endpoint: str, user_id: Optional[str] = None) -> dict:
     """Forward request to microservice with circuit breaker and authenticated user info."""
     service_name = service_url.split("://")[-1].split(":")[0]
-    
+
     async def make_request():
         try:
             logger.info("\n=== Starting request forwarding ===")
@@ -109,15 +109,15 @@ async def forward_request(request: Request, service_url: str, endpoint: str, use
             logger.info(f"Method: {request.method}")
             logger.info(f"User ID: {user_id}")
             logger.info(f"Query params: {request.query_params}")
-            
+
             # Get request body if present
             body = await request.body()
-            
+
             # Prepare headers
             headers = dict(request.headers)
             if "host" in headers:
                 del headers["host"]
-            
+
             # Add auth headers if user is authenticated
             if user_id:
                 logger.info("\n=== Adding authentication headers ===")
@@ -127,7 +127,7 @@ async def forward_request(request: Request, service_url: str, endpoint: str, use
                     logger.info("Authorization header forwarded")
                 headers["X-User-ID"] = user_id
                 logger.info(f"X-User-ID header set: {user_id}")
-                
+
             async with httpx.AsyncClient(timeout=30.0) as client:
                 # Include query parameters in the request
                 params = dict(request.query_params)
@@ -138,11 +138,11 @@ async def forward_request(request: Request, service_url: str, endpoint: str, use
                     content=body,
                     headers=headers
                 )
-                
+
                 # Get content type
                 content_type = response.headers.get("content-type", "").lower()
                 logger.info(f"Response content type: {content_type}")
-                
+
                 # Handle VCard responses
                 if "text/vcard" in content_type:
                     logger.info("Detected VCard response, forwarding with proper headers")
@@ -156,7 +156,7 @@ async def forward_request(request: Request, service_url: str, endpoint: str, use
                             "Cache-Control": "no-cache"
                         }
                     )
-                
+
                 # Handle binary responses (like QR codes)
                 if "image/" in content_type or (response.content and response.content.startswith(b'\x89PNG')):
                     logger.info("Detected binary response, returning raw content")
@@ -169,7 +169,7 @@ async def forward_request(request: Request, service_url: str, endpoint: str, use
                             "Content-Length": str(len(response.content))
                         }
                     )
-                
+
                 # Handle JSON responses
                 try:
                     response_data = response.json()
@@ -186,7 +186,7 @@ async def forward_request(request: Request, service_url: str, endpoint: str, use
                         media_type=content_type or "application/octet-stream",
                         status_code=response.status_code
                     )
-                    
+
         except Exception as e:
             logger.error(f"\n=== Error in forward_request to {service_name} ===")
             logger.error(f"Error type: {type(e).__name__}")
@@ -205,25 +205,25 @@ async def forward_request(request: Request, service_url: str, endpoint: str, use
         )
 
 # Auth routes
-@app.post("/api/v1/auth/register")
+@app.post("/v1/auth/register")
 async def register(request: Request):
     """Register a new user."""
     return await forward_request(request, settings.USER_SERVICE_URL, "/api/v1/auth/register")
 
-@app.post("/api/v1/auth/login")
+@app.post("/v1/auth/login")
 async def login(request: Request):
     """Login with email and password."""
     return await forward_request(request, settings.USER_SERVICE_URL, "/api/v1/auth/login")
 
-@app.get("/api/v1/auth/google/authorize")
+@app.get("/v1/auth/google/authorize")
 async def init_google_login(request: Request):
     """Initialize Google OAuth flow."""
     try:
         logger.info("Received Google login init request")
         logger.info(f"Query params: {request.query_params}")
-        
+
         return await forward_request(request, settings.USER_SERVICE_URL, "/api/v1/auth/google/authorize")
-        
+
     except Exception as e:
         logger.error(f"Error initializing Google login: {str(e)}")
         raise HTTPException(
@@ -231,32 +231,32 @@ async def init_google_login(request: Request):
             detail=str(e)
         )
 
-@app.get("/api/v1/auth/google/callback")
+@app.get("/v1/auth/google/callback")
 async def google_callback_redirect(request: Request):
     """Handle Google OAuth redirect."""
     try:
         code = request.query_params.get("code")
         state = request.query_params.get("state")
         error = request.query_params.get("error")
-        
+
         logger.info("Received Google callback request")
         logger.info(f"Code: {code}")
         logger.info(f"State: {state}")
-        
+
         if error:
             logger.error(f"Google OAuth error: {error}")
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Google OAuth error: {error}"
             )
-            
+
         if not code:
             logger.error("No authorization code in query parameters")
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Authorization code is required"
             )
-            
+
         # Exchange code for tokens
         response = await forward_request(
             request,
@@ -267,21 +267,21 @@ async def google_callback_redirect(request: Request):
                 "redirect_uri": "http://localhost:5173/auth/google/callback"
             }
         )
-        
+
         if not response.get("access_token"):
             logger.error("No access token in user service response")
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Failed to get access token"
             )
-            
+
         # Redirect to frontend with success
         frontend_url = settings.FRONTEND_URL
         return RedirectResponse(
             url=f"{frontend_url}/auth/google/success?token={response['access_token']}",
             status_code=status.HTTP_302_FOUND
         )
-        
+
     except HTTPException as he:
         raise he
     except Exception as e:
@@ -291,41 +291,41 @@ async def google_callback_redirect(request: Request):
             detail=str(e)
         )
 
-@app.post("/api/v1/auth/google/callback")
+@app.post("/v1/auth/google/callback")
 async def google_callback(request: Request):
     """Handle Google OAuth callback from frontend."""
     try:
         body = await request.json()
         logger.info("Received Google callback request")
         logger.info(f"Request body: {json.dumps(body)}")
-        
+
         if not body.get("code"):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Authorization code is required"
             )
-            
+
         if not body.get("redirect_uri"):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Redirect URI is required"
             )
-            
+
         response = await forward_request(
             request,
             settings.USER_SERVICE_URL,
             "/api/v1/auth/google/callback"
         )
-        
+
         if not response.get("access_token"):
             logger.error("No access token in user service response")
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Failed to get access token"
             )
-            
+
         return response
-        
+
     except HTTPException as he:
         raise he
     except Exception as e:
@@ -335,32 +335,32 @@ async def google_callback(request: Request):
             detail=str(e)
         )
 
-@app.get("/api/v1/auth/me")
+@app.get("/v1/auth/me")
 async def get_current_user(request: Request, user_id: str = Depends(verify_token)):
     """Get current user profile."""
-    logger.info("=== /api/v1/auth/me endpoint called ===")
+    logger.info("=== /v1/auth/me endpoint called ===")
     logger.info(f"Authenticated user_id: {user_id}")
     return await forward_request(request, settings.USER_SERVICE_URL, "/api/v1/auth/me", user_id)
 
-@app.post("/api/v1/auth/refresh")
+@app.post("/v1/auth/refresh")
 async def refresh_token(request: Request):
     """Refresh access token using refresh token."""
     try:
         body = await request.json()
         refresh_token = body.get("refresh_token")
-        
+
         if not refresh_token:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Refresh token is required"
             )
-            
+
         return await forward_request(
             request,
             settings.USER_SERVICE_URL,
             "/api/v1/auth/refresh"
         )
-        
+
     except Exception as e:
         logger.error(f"Error refreshing token: {str(e)}")
         raise HTTPException(
@@ -369,19 +369,19 @@ async def refresh_token(request: Request):
         )
 
 # VCard routes
-@app.post("/api/v1/vcards")
+@app.post("/v1/vcards")
 async def create_vcard(request: Request, user_id: str = Depends(verify_token)):
     return await forward_request(request, settings.VCARD_SERVICE_URL, "/vcards", user_id)
 
-@app.get("/api/v1/vcards/{vcard_id}")
+@app.get("/v1/vcards/{vcard_id}")
 async def get_vcard(vcard_id: str, request: Request, user_id: str = Depends(verify_token)):
     return await forward_request(request, settings.VCARD_SERVICE_URL, f"/vcards/{vcard_id}", user_id)
 
-@app.get("/api/v1/vcards/user/{user_id}")
+@app.get("/v1/vcards/user/{user_id}")
 async def get_user_vcards(user_id: str, request: Request, current_user_id: str = Depends(verify_token)):
     return await forward_request(request, settings.VCARD_SERVICE_URL, f"/vcards/user/{user_id}", current_user_id)
 
-@app.put("/api/v1/vcards/{vcard_id}")
+@app.put("/v1/vcards/{vcard_id}")
 async def update_vcard(vcard_id: str, request: Request, user_id: str = Depends(verify_token)):
     """Update a VCard."""
     try:
@@ -402,11 +402,11 @@ async def update_vcard(vcard_id: str, request: Request, user_id: str = Depends(v
             detail=f"Error updating VCard: {str(e)}"
         )
 
-@app.delete("/api/v1/vcards/{vcard_id}")
+@app.delete("/v1/vcards/{vcard_id}")
 async def delete_vcard(vcard_id: str, request: Request, user_id: str = Depends(verify_token)):
     return await forward_request(request, settings.VCARD_SERVICE_URL, f"/vcards/{vcard_id}", user_id)
 
-@app.get("/api/v1/vcards/{vcard_id}/download")
+@app.get("/v1/vcards/{vcard_id}/download")
 async def download_vcard(
     request: Request,
     vcard_id: str
@@ -416,24 +416,24 @@ async def download_vcard(
         # Add Accept header for VCard
         headers = dict(request.headers)
         headers["Accept"] = "text/vcard"
-        
+
         # Create new request with updated headers
         modified_request = Request(
             scope=request.scope,
             receive=request.receive,
         )
         modified_request._headers = headers
-        
+
         # Forward request to VCard service
         response = await forward_request(
             modified_request,
             settings.VCARD_SERVICE_URL,
             f"/vcards/{vcard_id}/download"
         )
-        
+
         # Return response directly since forward_request now handles VCard responses
         return response
-        
+
     except Exception as e:
         logger.error(f"Error downloading VCard: {str(e)}")
         raise HTTPException(
@@ -442,22 +442,22 @@ async def download_vcard(
         )
 
 # QR Code routes
-@app.post("/api/v1/qrcodes")
+@app.post("/v1/qrcodes")
 async def create_qr_code(request: Request, user_id: str = Depends(verify_token)):
     """Create a QR code."""
     return await forward_request(request, settings.QR_SERVICE_URL, "/qrcodes", user_id)
 
-@app.get("/api/v1/qrcodes")
+@app.get("/v1/qrcodes")
 async def list_qr_codes(request: Request, user_id: str = Depends(verify_token)):
     """List all QR codes for the current user."""
     return await forward_request(request, settings.QR_SERVICE_URL, "/qrcodes", user_id)
 
-@app.get("/api/v1/qrcodes/{qr_id}")
+@app.get("/v1/qrcodes/{qr_id}")
 async def get_qr_code(qr_id: str, request: Request, user_id: str = Depends(verify_token)):
     """Get a specific QR code."""
     return await forward_request(request, settings.QR_SERVICE_URL, f"/qrcodes/{qr_id}", user_id)
 
-@app.put("/api/v1/qrcodes/{qr_id}")
+@app.put("/v1/qrcodes/{qr_id}")
 async def update_qr_code(qr_id: str, request: Request, user_id: str = Depends(verify_token)):
     """Update a QR code."""
     try:
@@ -478,40 +478,40 @@ async def update_qr_code(qr_id: str, request: Request, user_id: str = Depends(ve
             detail=f"Error updating QR code: {str(e)}"
         )
 
-@app.get("/api/v1/qrcodes/vcard/{vcard_id}")
+@app.get("/v1/qrcodes/vcard/{vcard_id}")
 async def get_vcard_qr_code(vcard_id: str, request: Request, user_id: str = Depends(verify_token)):
     """Get QR code for a VCard."""
     return await forward_request(request, settings.QR_SERVICE_URL, f"/qrcodes/vcard/{vcard_id}", user_id)
 
-@app.delete("/api/v1/qrcodes/{qr_id}")
+@app.delete("/v1/qrcodes/{qr_id}")
 async def delete_qr_code(qr_id: str, request: Request, user_id: str = Depends(verify_token)):
     """Delete a QR code."""
     return await forward_request(request, settings.QR_SERVICE_URL, f"/qrcodes/{qr_id}", user_id)
 
 # Analytics routes
-@app.get("/api/v1/analytics/metrics")
+@app.get("/v1/analytics/metrics")
 async def get_global_metrics(request: Request, user_id: str = Depends(verify_token)):
     """Get global analytics metrics."""
     return await forward_request(request, settings.ANALYTICS_SERVICE_URL, "/api/v1/analytics/metrics", user_id)
 
-@app.get("/api/v1/analytics/vcard/{vcard_id}")
+@app.get("/v1/analytics/vcard/{vcard_id}")
 async def get_vcard_analytics(vcard_id: str, request: Request, user_id: str = Depends(verify_token)):
     return await forward_request(request, settings.ANALYTICS_SERVICE_URL, f"/api/v1/analytics/vcard/{vcard_id}", user_id)
 
-@app.get("/api/v1/analytics/metrics/daily")
+@app.get("/v1/analytics/metrics/daily")
 async def get_daily_metrics(request: Request, user_id: str = Depends(verify_token)):
     """Get daily analytics metrics for a date range."""
     return await forward_request(request, settings.ANALYTICS_SERVICE_URL, "/api/v1/analytics/metrics/daily", user_id)
 
-@app.get("/api/v1/analytics/qr/{qr_id}")
+@app.get("/v1/analytics/qr/{qr_id}")
 async def get_qr_analytics(qr_id: str, request: Request, user_id: str = Depends(verify_token)):
     return await forward_request(request, settings.ANALYTICS_SERVICE_URL, f"/api/v1/analytics/qr/{qr_id}", user_id)
 
-@app.get("/api/v1/analytics/user/{user_id}")
+@app.get("/v1/analytics/user/{user_id}")
 async def get_user_analytics(user_id: str, request: Request, current_user_id: str = Depends(verify_token)):
     return await forward_request(request, settings.ANALYTICS_SERVICE_URL, f"/api/v1/analytics/user/{user_id}", current_user_id)
 
-@app.post("/api/v1/analytics/scan")
+@app.post("/v1/analytics/scan")
 async def record_scan(request: Request):
     """Record a scan event."""
     try:
@@ -527,7 +527,7 @@ async def record_scan(request: Request):
             detail=f"Error recording scan: {str(e)}"
         )
 
-@app.get("/api/v1/analytics/stream")
+@app.get("/v1/analytics/stream")
 async def analytics_stream(
     request: Request,
     access_token: str = None
@@ -537,7 +537,7 @@ async def analytics_stream(
         logger.info("SSE request received for global analytics")
         logger.info(f"Request headers: {dict(request.headers)}")
         logger.info(f"Query params: {dict(request.query_params)}")
-        
+
         # Get token from query param or header
         if not access_token:
             auth_header = request.headers.get("Authorization")
@@ -557,7 +557,7 @@ async def analytics_stream(
                     )
         else:
             logger.info("Token provided as function parameter")
-        
+
         # Verify the token
         try:
             payload = jwt.decode(
@@ -583,7 +583,7 @@ async def analytics_stream(
         # Forward the SSE request to analytics service
         analytics_url = f"{settings.ANALYTICS_SERVICE_URL}/api/v1/analytics/stream"
         logger.info(f"Forwarding SSE request to: {analytics_url}")
-        
+
         # Create client session with proper headers
         async with httpx.AsyncClient() as client:
             response = await client.get(
@@ -596,9 +596,9 @@ async def analytics_stream(
                 },
                 timeout=None  # No timeout for SSE
             )
-            
+
             logger.info(f"Analytics service response status: {response.status_code}")
-            
+
             return StreamingResponse(
                 response.aiter_bytes(),
                 media_type="text/event-stream",
@@ -620,7 +620,7 @@ async def analytics_stream(
             detail=f"Error streaming global analytics: {str(e)}"
         )
 
-@app.get("/api/v1/analytics/qr/{qr_id}/stream")
+@app.get("/v1/analytics/qr/{qr_id}/stream")
 async def qr_analytics_stream(
     qr_id: str,
     request: Request,
@@ -631,7 +631,7 @@ async def qr_analytics_stream(
         logger.info(f"SSE request received for QR {qr_id}")
         logger.info(f"Request headers: {dict(request.headers)}")
         logger.info(f"Query params: {dict(request.query_params)}")
-        
+
         # Get token from query param or header
         if not access_token:
             auth_header = request.headers.get("Authorization")
@@ -651,7 +651,7 @@ async def qr_analytics_stream(
                     )
         else:
             logger.info("Token provided as function parameter")
-        
+
         # Verify the token
         try:
             payload = jwt.decode(
@@ -677,7 +677,7 @@ async def qr_analytics_stream(
         # Forward the SSE request to analytics service
         analytics_url = f"{settings.ANALYTICS_SERVICE_URL}/api/v1/analytics/qr/{qr_id}/stream"
         logger.info(f"Forwarding SSE request to: {analytics_url}")
-        
+
         # Create client session with proper headers
         async with httpx.AsyncClient() as client:
             response = await client.get(
@@ -690,9 +690,9 @@ async def qr_analytics_stream(
                 },
                 timeout=None  # No timeout for SSE
             )
-            
+
             logger.info(f"Analytics service response status: {response.status_code}")
-            
+
             return StreamingResponse(
                 response.aiter_bytes(),
                 media_type="text/event-stream",
@@ -714,7 +714,7 @@ async def qr_analytics_stream(
             detail=f"Error streaming QR analytics: {str(e)}"
         )
 
-@app.get("/api/v1/analytics/vcard/{vcard_id}/stream")
+@app.get("/v1/analytics/vcard/{vcard_id}/stream")
 async def vcard_analytics_stream(
     vcard_id: str,
     request: Request,
@@ -725,7 +725,7 @@ async def vcard_analytics_stream(
         logger.info(f"SSE request received for VCard {vcard_id}")
         logger.info(f"Request headers: {dict(request.headers)}")
         logger.info(f"Query params: {dict(request.query_params)}")
-        
+
         # Get token from query param or header
         if not access_token:
             auth_header = request.headers.get("Authorization")
@@ -745,7 +745,7 @@ async def vcard_analytics_stream(
                     )
         else:
             logger.info("Token provided as function parameter")
-        
+
         # Verify the token
         try:
             payload = jwt.decode(
@@ -771,7 +771,7 @@ async def vcard_analytics_stream(
         # Forward the SSE request to analytics service
         analytics_url = f"{settings.ANALYTICS_SERVICE_URL}/api/v1/analytics/vcard/{vcard_id}/stream"
         logger.info(f"Forwarding SSE request to: {analytics_url}")
-        
+
         # Create client session with proper headers
         async with httpx.AsyncClient() as client:
             response = await client.get(
@@ -784,9 +784,9 @@ async def vcard_analytics_stream(
                 },
                 timeout=None  # No timeout for SSE
             )
-            
+
             logger.info(f"Analytics service response status: {response.status_code}")
-            
+
             return StreamingResponse(
                 response.aiter_bytes(),
                 media_type="text/event-stream",
@@ -808,7 +808,7 @@ async def vcard_analytics_stream(
             detail=f"Error streaming VCard analytics: {str(e)}"
         )
 
-@app.get("/api/v1/health")
+@app.get("/v1/health")
 async def health_check():
     """Check health of all services."""
     services = {
@@ -817,7 +817,7 @@ async def health_check():
             "version": settings.VERSION
         }
     }
-    
+
     # Check all microservices
     async with httpx.AsyncClient(timeout=5.0) as client:
         service_checks = [
@@ -826,7 +826,7 @@ async def health_check():
             ("qr", settings.QR_SERVICE_URL),
             ("analytics", settings.ANALYTICS_SERVICE_URL)
         ]
-        
+
         for name, url in service_checks:
             try:
                 response = await client.get(f"{url}/health")
@@ -843,42 +843,42 @@ async def health_check():
                     "status": "unhealthy",
                     "error": str(e)
                 }
-    
+
     # Determine overall health
     overall_status = all(
         service.get("status") == "healthy"
         for service in services.values()
     )
-    
+
     return {
         "status": "healthy" if overall_status else "degraded",
         "timestamp": datetime.utcnow().isoformat(),
         "services": services
     }
 
-@app.get("/api/v1/vcards/public/{vcard_id}")
+@app.get("/v1/vcards/public/{vcard_id}")
 async def get_public_vcard(vcard_id: str, request: Request):
     """Get public VCard data without authentication."""
     return await forward_request(request, settings.VCARD_SERVICE_URL, f"/vcards/public/{vcard_id}")
 
 # Add this diagnostic endpoint for testing client IP handling
-@app.get("/api/v1/test-client-ip")
+@app.get("/v1/test-client-ip")
 async def get_client_ip(request: Request):
     # This logs the IP Uvicorn directly sees connecting
     client_host = request.client.host
     logger.info(f"Direct client host seen: {client_host}")
-    
+
     # Log the raw header Uvicorn received
     x_forwarded_for = request.headers.get('x-forwarded-for')
     logger.info(f"X-Forwarded-For header received: {x_forwarded_for}")
-    
+
     # Also log all request headers for complete debugging
     logger.info("All request headers:")
     for header_name, header_value in request.headers.items():
         logger.info(f"  {header_name}: {header_value}")
-    
+
     return {
-        "client_host": client_host, 
+        "client_host": client_host,
         "x_forwarded_for": x_forwarded_for,
         "all_headers": dict(request.headers)
     }
@@ -890,4 +890,4 @@ if __name__ == "__main__":
         host=settings.HOST,
         port=settings.PORT,
         reload=settings.DEBUG
-    ) 
+    )

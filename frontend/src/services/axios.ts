@@ -7,7 +7,7 @@ const API_VERSION = import.meta.env.VITE_API_VERSION || 'v1'
 const apiUrl = API_URL.replace(':5173', ':8000');
 
 export const axiosInstance = axios.create({
-  baseURL: `${apiUrl}/${API_VERSION}`,
+  baseURL: `${apiUrl}/api/${API_VERSION}`,
   headers: {
     'Content-Type': 'application/json',
   },
@@ -59,7 +59,7 @@ axiosInstance.interceptors.response.use(
         fullUrl: `${error.config?.baseURL}${error.config?.url}`
       }
     })
-    
+
     if (error.response?.status === 401 || error.response?.status === 403) {
       // Clear token and redirect to login on auth errors
       console.log('🔒 Authentication error detected, clearing token')
@@ -68,4 +68,4 @@ axiosInstance.interceptors.response.use(
     }
     return Promise.reject(error)
   }
-) 
+)

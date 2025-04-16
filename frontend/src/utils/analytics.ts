@@ -42,32 +42,32 @@ export const trackEvent = async (
       console.warn(`📊 Cannot track ${actionType} event: Missing vcardId or userId`);
       return false;
     }
-    
+
     // Skip tracking if page is not visible and this is not a user-initiated action
     if (!isPageVisible() && (actionType === ACTION_PAGE_VIEW || actionType === ACTION_SCAN)) {
       console.log(`📊 Skipping ${actionType} event - page not visible`);
       return false;
     }
-    
+
     // Create a unique key for this event
     const eventKey = `${vcardId}-${actionType}-${userId}`;
     const now = Date.now();
-    
+
     // Check if we've seen this event recently (prevent rapid duplicates)
     const lastTracked = recentEvents.get(eventKey);
     if (lastTracked && now - lastTracked < DEDUPLICATION_WINDOW) {
       console.log(`📊 Skipping duplicate ${actionType} event for VCard ${vcardId}`);
       return false;
     }
-    
+
     // Mark this event as tracked
     recentEvents.set(eventKey, now);
-    
+
     // Clean up old events to prevent memory leaks
     setTimeout(() => {
       recentEvents.delete(eventKey);
     }, DEDUPLICATION_WINDOW);
-    
+
     // Prepare device info
     const deviceInfo = {
       is_mobile: /Mobi|Android/i.test(navigator.userAgent),
@@ -75,18 +75,18 @@ export const trackEvent = async (
       os: navigator.platform,
       browser: navigator.userAgent
     };
-    
+
     // Send the analytics event
     const apiUrl = import.meta.env.VITE_API_URL;
     console.log(`📊 Tracking ${actionType} event for VCard ${vcardId}`);
-    
+
     // Ensure apiUrl is defined
     if (!apiUrl) {
       console.error('API URL is not defined');
       return false;
     }
 
-    const response = await fetch(`${apiUrl}/v1/analytics/scan`, {
+    const response = await fetch(`${apiUrl}/api/v1/analytics/scan`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
@@ -104,12 +104,12 @@ export const trackEvent = async (
         }
       })
     });
-    
+
     if (!response.ok) {
       console.error(`Failed to track ${actionType} event:`, await response.text());
       return false;
     }
-    
+
     return true;
   } catch (error) {
     console.error(`Failed to track ${actionType} event:`, error);
@@ -119,19 +119,19 @@ export const trackEvent = async (
 
 /**
  * Handle tracking for a VCard page load
- * 
+ *
  * This handles the different scenarios:
  * 1. First load from QR scan: Track both scan and page_view
  * 2. First load from direct navigation: Track only page_view
  * 3. Reload of existing page: Track only page_view
  */
 export const trackVCardPageLoad = async (
-  vcardId: string | undefined, 
+  vcardId: string | undefined,
   userId: string | undefined,
   isQRCodeScan: boolean
 ): Promise<void> => {
   if (!vcardId || !userId || !isPageVisible()) return;
-  
+
   // If this is from a QR code scan, always track as a new scan
   // and reset the visit tracking
   if (isQRCodeScan) {
@@ -139,7 +139,7 @@ export const trackVCardPageLoad = async (
     resetVisitTracking(vcardId);
     await trackEvent(vcardId, userId, ACTION_SCAN);
   }
-  
+
   // Always track page view for any visible page load
   await trackEvent(vcardId, userId, ACTION_PAGE_VIEW);
 };
