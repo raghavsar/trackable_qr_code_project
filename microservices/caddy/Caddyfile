@@ -43,6 +43,12 @@ qr.phonon.io {
 			trusted_proxies private_ranges
 			header_up Host {host}
 			header_up X-Real-IP {remote_host}
+
+			# Add CORS headers for MinIO resources
+			header_down Access-Control-Allow-Origin "*"
+			header_down Access-Control-Allow-Methods "GET, OPTIONS"
+			header_down Access-Control-Allow-Headers "*"
+			header_down Access-Control-Expose-Headers "ETag"
 		}
 	}
 

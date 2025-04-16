@@ -35,10 +35,19 @@ class QRService {
         requestWithDefaults
       );
 
-      // If the response doesn't include the full URL, construct it
-      if (response.data.qr_image_url && !response.data.qr_image_url.startsWith('http')) {
-        const baseUrl = process.env.REACT_APP_API_URL || '';
-        response.data.qr_image_url = `${baseUrl}${response.data.qr_image_url}`;
+      // Ensure the URL is properly formatted
+      if (response.data.qr_image_url) {
+        // If it's already a full URL, use it as is
+        if (response.data.qr_image_url.startsWith('http')) {
+          // URL is already complete
+        } else {
+          // Add the API base URL if needed
+          const baseUrl = import.meta.env.VITE_API_URL || '';
+          response.data.qr_image_url = `${baseUrl}${response.data.qr_image_url}`;
+        }
+
+        // Log the final URL for debugging
+        console.log('QR Image URL:', response.data.qr_image_url);
       }
 
       return response.data;
@@ -63,10 +72,19 @@ class QRService {
         requestWithDefaults
       );
 
-      // If the response doesn't include the full URL, construct it
-      if (response.data.preview_url && !response.data.preview_url.startsWith('http')) {
-        const baseUrl = process.env.REACT_APP_API_URL || '';
-        response.data.preview_url = `${baseUrl}${response.data.preview_url}`;
+      // Ensure the URL is properly formatted
+      if (response.data.preview_url) {
+        // If it's already a full URL, use it as is
+        if (response.data.preview_url.startsWith('http')) {
+          // URL is already complete
+        } else {
+          // Add the API base URL if needed
+          const baseUrl = import.meta.env.VITE_API_URL || '';
+          response.data.preview_url = `${baseUrl}${response.data.preview_url}`;
+        }
+
+        // Log the final URL for debugging
+        console.log('Preview URL:', response.data.preview_url);
       }
 
       return response.data;
@@ -78,13 +96,22 @@ class QRService {
   async getQRCode(id: string): Promise<QRGenerateResponse> {
     try {
       const response = await api.get<QRGenerateResponse>(`/qrcodes/${id}`);
-      
-      // If the response doesn't include the full URL, construct it
-      if (response.data.qr_image_url && !response.data.qr_image_url.startsWith('http')) {
-        const baseUrl = process.env.REACT_APP_API_URL || '';
-        response.data.qr_image_url = `${baseUrl}${response.data.qr_image_url}`;
+
+      // Ensure the URL is properly formatted
+      if (response.data.qr_image_url) {
+        // If it's already a full URL, use it as is
+        if (response.data.qr_image_url.startsWith('http')) {
+          // URL is already complete
+        } else {
+          // Add the API base URL if needed
+          const baseUrl = import.meta.env.VITE_API_URL || '';
+          response.data.qr_image_url = `${baseUrl}${response.data.qr_image_url}`;
+        }
+
+        // Log the final URL for debugging
+        console.log('QR Image URL (get):', response.data.qr_image_url);
       }
-      
+
       return response.data;
     } catch (error) {
       this.handleError(error);
@@ -118,10 +145,19 @@ class QRService {
         requestWithDefaults
       );
 
-      // If the response doesn't include the full URL, construct it
-      if (response.data.qr_image_url && !response.data.qr_image_url.startsWith('http')) {
-        const baseUrl = process.env.REACT_APP_API_URL || '';
-        response.data.qr_image_url = `${baseUrl}${response.data.qr_image_url}`;
+      // Ensure the URL is properly formatted
+      if (response.data.qr_image_url) {
+        // If it's already a full URL, use it as is
+        if (response.data.qr_image_url.startsWith('http')) {
+          // URL is already complete
+        } else {
+          // Add the API base URL if needed
+          const baseUrl = import.meta.env.VITE_API_URL || '';
+          response.data.qr_image_url = `${baseUrl}${response.data.qr_image_url}`;
+        }
+
+        // Log the final URL for debugging
+        console.log('QR Image URL (update):', response.data.qr_image_url);
       }
 
       return response.data;
@@ -132,13 +168,16 @@ class QRService {
 
   getDownloadUrl(qrCode: QRGenerateResponse): string {
     if (!qrCode.qr_image_url) return '';
-    
+
     // If the URL doesn't start with http, prepend the API base URL
     if (!qrCode.qr_image_url.startsWith('http')) {
-      const baseUrl = process.env.REACT_APP_API_URL || '';
-      return `${baseUrl}${qrCode.qr_image_url}`;
+      const baseUrl = import.meta.env.VITE_API_URL || '';
+      const url = `${baseUrl}${qrCode.qr_image_url}`;
+      console.log('Download URL (constructed):', url);
+      return url;
     }
-    
+
+    console.log('Download URL (original):', qrCode.qr_image_url);
     return qrCode.qr_image_url;
   }
 
@@ -147,4 +186,4 @@ class QRService {
   }
 }
 
-export const qrService = new QRService(); 
+export const qrService = new QRService();

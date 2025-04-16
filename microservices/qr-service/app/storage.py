@@ -40,7 +40,7 @@ class MinioStorage:
             minio_public_endpoint = "http://192.168.7.154:9000"
 
         logger.info(f"Final MinIO configuration - endpoint: {minio_endpoint}, public endpoint: {minio_public_endpoint}")
-        
+
         self.client = Minio(
             endpoint=minio_endpoint,
             access_key=minio_access_key,
@@ -57,7 +57,7 @@ class MinioStorage:
             if not self.client.bucket_exists(self.bucket_name):
                 logger.info(f"Creating bucket {self.bucket_name}...")
                 self.client.make_bucket(self.bucket_name)
-                
+
                 # Set bucket policy for public read
                 policy = {
                     "Version": "2012-10-17",
@@ -70,7 +70,7 @@ class MinioStorage:
                         }
                     ]
                 }
-                
+
                 try:
                     logger.info("Setting bucket policy for public read access...")
                     self.client.set_bucket_policy(self.bucket_name, json.dumps(policy))
@@ -79,7 +79,7 @@ class MinioStorage:
                     logger.error(f"Failed to set bucket policy: {str(policy_error)}")
                     # Continue even if policy setting fails
                     pass
-                
+
                 logger.info("Bucket created successfully")
             else:
                 logger.info(f"Bucket {self.bucket_name} already exists")
@@ -95,26 +95,26 @@ class MinioStorage:
     async def upload_qr_code(self, qr_image: BytesIO, object_name: str) -> str:
         """
         Upload a QR code image to MinIO
-        
+
         Args:
             qr_image: BytesIO object containing the QR code image
             object_name: Name to give the object in storage
-            
+
         Returns:
             str: Public URL to access the uploaded QR code
         """
         try:
             logger.info(f"Uploading QR code: {object_name}")
-            
+
             # Get the image data and size
             qr_image.seek(0)
             image_data = qr_image.read()
             size = len(image_data)
-            
+
             # Detect content type
             content_type = magic.from_buffer(image_data, mime=True)
             logger.info(f"Detected content type: {content_type}")
-            
+
             # Upload the image
             self.client.put_object(
                 bucket_name=self.bucket_name,
@@ -124,13 +124,15 @@ class MinioStorage:
                 content_type=content_type
             )
             logger.info(f"QR code uploaded successfully: {object_name}")
-            
+
             # Return permanent public URL
-            public_url = f"{self.endpoint}/{self.bucket_name}/{object_name}"
+            # Ensure the endpoint doesn't have a trailing slash and the bucket name is included correctly
+            endpoint = self.endpoint.rstrip('/')
+            public_url = f"{endpoint}/{self.bucket_name}/{object_name}"
             logger.info(f"Generated public URL: {public_url}")
-            
+
             return public_url
-            
+
         except S3Error as e:
             logger.error(f"MinIO Error during upload: {str(e)}")
             raise Exception(f"Failed to upload QR code: {str(e)}")
@@ -141,19 +143,20 @@ class MinioStorage:
     async def get_qr_code_url(self, object_name: str) -> str:
         """
         Get the public URL for accessing a QR code
-        
+
         Args:
             object_name: Name of the object in storage
-            
+
         Returns:
             str: Public URL to access the QR code
         """
-        return f"{self.endpoint}/{self.bucket_name}/{object_name}"
+        endpoint = self.endpoint.rstrip('/')
+        return f"{endpoint}/{self.bucket_name}/{object_name}"
 
     async def delete_qr_code(self, object_name: str):
         """
         Delete a QR code from storage
-        
+
         Args:
             object_name: Name of the object to delete
         """
@@ -178,7 +181,7 @@ class StorageService:
         )
         self.bucket_name = os.getenv("MINIO_BUCKET_NAME", "qrcodes")
         self.public_endpoint = os.getenv("MINIO_PUBLIC_ENDPOINT", "http://localhost:9000")
-        
+
         # Ensure bucket exists
         self._ensure_bucket_exists()
 
@@ -208,54 +211,54 @@ class StorageService:
                 # Extract image data and format
                 format_type = photo_data.split(';')[0].split('/')[1]
                 image_data = base64.b64decode(photo_data.split(',')[1])
-                
+
                 # Process image to reduce size if needed
                 img = Image.open(BytesIO(image_data))
-                
+
                 # Resize if too large (max 400x400 for vCard compatibility)
                 if max(img.size) > 400:
                     img.thumbnail((400, 400), Image.Resampling.LANCZOS)
-                
+
                 # Convert to RGB if needed
                 if img.mode in ('RGBA', 'P'):
                     img = img.convert('RGB')
-                
+
                 # Save to bytes with compression
                 output = BytesIO()
                 img.save(output, format='JPEG', quality=85, optimize=True)
                 image_data = output.getvalue()
                 format_type = 'jpeg'  # Force JPEG for better compatibility
-                
+
                 # Generate filename with timestamp
                 timestamp = datetime.utcnow().timestamp()
                 if vcard_id:
                     filename = f"users/{user_id}/pfp_vcard/{vcard_id}_{timestamp}.{format_type}"
                 else:
                     filename = f"users/{user_id}/profile_photos/profile_{timestamp}.{format_type}"
-                
+
             else:
                 # If it's already a URL, check if it's our MinIO URL
                 if self.public_endpoint in photo_data:
                     return photo_data
-                    
+
                 # For external URLs, download and process
                 try:
                     response = requests.get(photo_data, timeout=5)
                     response.raise_for_status()
                     img = Image.open(BytesIO(response.content))
-                    
+
                     # Process image same as base64
                     if max(img.size) > 400:
                         img.thumbnail((400, 400), Image.Resampling.LANCZOS)
-                    
+
                     if img.mode in ('RGBA', 'P'):
                         img = img.convert('RGB')
-                    
+
                     output = BytesIO()
                     img.save(output, format='JPEG', quality=85, optimize=True)
                     image_data = output.getvalue()
                     format_type = 'jpeg'
-                    
+
                     timestamp = datetime.utcnow().timestamp()
                     if vcard_id:
                         filename = f"users/{user_id}/pfp_vcard/{vcard_id}_{timestamp}.{format_type}"
@@ -273,10 +276,11 @@ class StorageService:
                 length=len(image_data),
                 content_type=f"image/jpeg"
             )
-            
+
             # Return public URL
-            return f"{self.public_endpoint}/{self.bucket_name}/{filename}"
-            
+            endpoint = self.public_endpoint.rstrip('/')
+            return f"{endpoint}/{self.bucket_name}/{filename}"
+
         except Exception as e:
             logger.error(f"Error uploading profile photo: {str(e)}")
             return None
@@ -284,4 +288,4 @@ class StorageService:
 storage_service = StorageService()
 
 # Create a singleton instance
-storage = MinioStorage() 
+storage = MinioStorage()
