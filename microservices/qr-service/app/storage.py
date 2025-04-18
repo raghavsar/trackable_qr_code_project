@@ -36,8 +36,8 @@ class MinioStorage:
             minio_endpoint = "minio:9000"
 
         if not minio_public_endpoint:
-            logger.warning("MINIO_PUBLIC_ENDPOINT not set, using default: http://192.168.7.154:9000")
-            minio_public_endpoint = "http://192.168.7.154:9000"
+            logger.warning("MINIO_PUBLIC_ENDPOINT not set, using default: https://qr.phonon.io/minio")
+            minio_public_endpoint = "https://qr.phonon.io/minio"
 
         logger.info(f"Final MinIO configuration - endpoint: {minio_endpoint}, public endpoint: {minio_public_endpoint}")
 
@@ -180,7 +180,7 @@ class StorageService:
             secure=os.getenv("MINIO_USE_SSL", "false").lower() == "true"
         )
         self.bucket_name = os.getenv("MINIO_BUCKET_NAME", "qrcodes")
-        self.public_endpoint = os.getenv("MINIO_PUBLIC_ENDPOINT", "http://localhost:9000")
+        self.public_endpoint = os.getenv("MINIO_PUBLIC_ENDPOINT", "https://qr.phonon.io/minio")
 
         # Ensure bucket exists
         self._ensure_bucket_exists()

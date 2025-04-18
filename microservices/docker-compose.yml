@@ -39,8 +39,8 @@ services:
       - MINIO_ROOT_PASSWORD=minioadmin
       - MINIO_ADDRESS=:9000
       - MINIO_CONSOLE_ADDRESS=:9001
-      - MINIO_BROWSER_REDIRECT_URL=http://192.168.7.60:9001
-      - MINIO_SERVER_URL=http://192.168.7.60:9000
+      - MINIO_BROWSER_REDIRECT_URL=https://qr.phonon.io/minio/ui
+      - MINIO_SERVER_URL=https://qr.phonon.io/minio
     command: server /data --console-address ":9001"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]

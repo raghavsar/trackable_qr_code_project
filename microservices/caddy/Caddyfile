@@ -44,8 +44,8 @@ qr.phonon.io {
 			header_up X-Real-IP {remote_host}
 			header_up X-Forwarded-Proto {scheme}
 
-			# Ensure proper path handling
-			rewrite * /minio{path}
+			# Remove the /minio prefix from the path
+			rewrite * {path}
 
 			# CORS headers for MinIO resources
 			header_down Access-Control-Allow-Origin "*"
