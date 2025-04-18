@@ -98,7 +98,7 @@ async def verify_token(credentials: HTTPAuthorizationCredentials = Depends(secur
             detail="Token verification failed"
         )
 
-async def forward_request(request: Request, service_url: str, endpoint: str, user_id: Optional[str] = None) -> dict:
+async def forward_request(request: Request, service_url: str, endpoint: str, user_id: Optional[str] = None, override_params: Optional[dict] = None) -> dict:
     """Forward request to microservice with circuit breaker and authenticated user info."""
     service_name = service_url.split("://")[-1].split(":")[0]
 
@@ -130,10 +130,21 @@ async def forward_request(request: Request, service_url: str, endpoint: str, use
 
             async with httpx.AsyncClient(timeout=30.0) as client:
                 # Include query parameters in the request
-                params = dict(request.query_params)
+                # If endpoint already has query params, don't add them again
+                if "?" in endpoint:
+                    # Endpoint already has query parameters
+                    params = {}
+                    url = f"{service_url}{endpoint}"
+                    logger.info(f"Using endpoint with embedded query params: {url}")
+                else:
+                    # Use query params from request or override
+                    params = override_params if override_params is not None else dict(request.query_params)
+                    url = f"{service_url}{endpoint}"
+                    logger.info(f"Using endpoint with separate query params: {url}, params: {params}")
+
                 response = await client.request(
                     request.method,
-                    f"{service_url}{endpoint}",
+                    url,
                     params=params,
                     content=body,
                     headers=headers
@@ -258,14 +269,31 @@ async def google_callback_redirect(request: Request):
             )
 
         # Exchange code for tokens
+        # Create a JSON body with the code and redirect_uri
+        body_data = {
+            "code": code,
+            "redirect_uri": "http://localhost:5173/auth/google/callback"
+        }
+
+        # Create a custom async generator to yield the body content
+        async def receive_body():
+            yield {"type": "http.request", "body": json.dumps(body_data).encode(), "more_body": False}
+
+        # Create a modified request with the custom body
+        modified_request = Request(
+            scope={
+                **request.scope,
+                "headers": [(k.lower().encode(), v.encode()) for k, v in request.headers.items() if k.lower() != "content-length"] +
+                           [(b"content-type", b"application/json")]
+            },
+            receive=receive_body
+        )
+
+        # Use the modified request to forward the request
         response = await forward_request(
-            request,
+            modified_request,
             settings.USER_SERVICE_URL,
-            "/api/v1/auth/google/callback",
-            override_body={
-                "code": code,
-                "redirect_uri": "http://localhost:5173/auth/google/callback"
-            }
+            "/api/v1/auth/google/callback"
         )
 
         if not response.get("access_token"):
@@ -852,7 +880,7 @@ async def health_check():
 
     return {
         "status": "healthy" if overall_status else "degraded",
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(datetime.timezone.utc).isoformat(),
         "services": services
     }
 
@@ -863,11 +891,32 @@ async def get_public_vcard(vcard_id: str, request: Request):
 
 # Redirect service routes
 @app.get("/r/{vcard_id}")
-async def redirect_vcard(vcard_id: str, request: Request):
+async def redirect_vcard(
+    vcard_id: str,
+    request: Request,
+    format: Optional[str] = None,
+    action: Optional[str] = None
+):
     """Forward redirect requests to the redirect service."""
     try:
         logger.info(f"Forwarding redirect request for VCard {vcard_id}")
-        return await forward_request(request, settings.REDIRECT_SERVICE_URL, f"/r/{vcard_id}")
+        logger.info(f"Query parameters: format={format}, action={action}")
+
+        # Explicitly construct the endpoint with query parameters
+        endpoint = f"/r/{vcard_id}"
+        params = {}
+        if format:
+            params["format"] = format
+        if action:
+            params["action"] = action
+
+        # Add query string if we have parameters
+        if params:
+            query_string = "&".join([f"{k}={v}" for k, v in params.items()])
+            endpoint = f"{endpoint}?{query_string}"
+
+        logger.info(f"Constructed endpoint: {endpoint}")
+        return await forward_request(request, settings.REDIRECT_SERVICE_URL, endpoint)
     except Exception as e:
         logger.error(f"Error forwarding redirect request: {str(e)}")
         raise HTTPException(
@@ -902,6 +951,8 @@ async def get_client_ip(request: Request):
 async def proxy_minio_storage(bucket: str, path: str, request: Request):
     """Proxy requests to MinIO storage."""
     logger.info(f"Proxying MinIO request for bucket: {bucket}, path: {path}")
+    logger.info(f"Client IP: {request.client.host if request.client else 'unknown'}")
+    logger.info(f"User Agent: {request.headers.get('user-agent', 'unknown')}")
 
     # Construct the MinIO URL
     minio_url = f"http://minio:9000/{bucket}/{path}"
