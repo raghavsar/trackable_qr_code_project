@@ -20,13 +20,16 @@ export const useHistoricalAnalytics = ({ startDate, endDate, vcardId }: UseHisto
 
   const fetchWithRetry = useCallback(async (retryCount = 0): Promise<DailyMetric[]> => {
     try {
+      // Check if API_URL already contains '/api'
+      const apiPath = API_URL.endsWith('/api') ? `${API_URL}/v1` : `${API_URL}/api/v1`;
+
       // Construct the URL based on whether we have a vcardId or not
-      const apiUrl = vcardId 
-        ? `${API_URL}/api/v1/analytics/metrics/vcard/${vcardId}/daily?start_date=${startDate}&end_date=${endDate}`
-        : `${API_URL}/api/v1/analytics/metrics/daily?start_date=${startDate}&end_date=${endDate}`;
+      const apiUrl = vcardId
+        ? `${apiPath}/analytics/metrics/vcard/${vcardId}/daily?start_date=${startDate}&end_date=${endDate}`
+        : `${apiPath}/analytics/metrics/daily?start_date=${startDate}&end_date=${endDate}`;
 
       console.log(`Fetching historical analytics data from: ${apiUrl}`);
-      
+
       const response = await fetch(
         apiUrl,
         {
@@ -43,7 +46,7 @@ export const useHistoricalAnalytics = ({ startDate, endDate, vcardId }: UseHisto
           setHasData(false);
           return [];
         }
-        
+
         // Log detailed error information for other errors
         const errorText = await response.text();
         console.error('Analytics API Error:', {
@@ -57,7 +60,7 @@ export const useHistoricalAnalytics = ({ startDate, endDate, vcardId }: UseHisto
       }
 
       const data = await response.json();
-      
+
       // Check if the response has data
       if (!data?.metrics || data.metrics.length === 0) {
         setHasData(false);
@@ -79,13 +82,13 @@ export const useHistoricalAnalytics = ({ startDate, endDate, vcardId }: UseHisto
   useEffect(() => {
     const fetchData = async () => {
       if (!startDate || !endDate) return;
-      
+
       try {
         setLoading(true);
         setError(null);
-        
+
         const data = await fetchWithRetry();
-        
+
         if (data.length === 0) {
           setMetrics([]);
           return;
@@ -115,11 +118,11 @@ export const useHistoricalAnalytics = ({ startDate, endDate, vcardId }: UseHisto
     fetchData();
   }, [fetchWithRetry]);
 
-  return { 
-    metrics, 
-    error, 
+  return {
+    metrics,
+    error,
     loading,
     hasData,
     refetch: useCallback(() => fetchWithRetry(), [fetchWithRetry])
   };
-}; 
+};

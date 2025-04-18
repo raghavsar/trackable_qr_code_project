@@ -40,9 +40,12 @@ export const useAnalyticsSSE = ({ vcardId }: UseAnalyticsSSEProps = {}) => {
   const fetchInitialMetrics = async () => {
     try {
       // Determine the correct endpoint based on whether we have a vcardId
+      // Check if API_URL already contains '/api'
+      const apiPath = API_URL.endsWith('/api') ? `${API_URL}/v1` : `${API_URL}/api/v1`;
+
       const endpoint = vcardId
-        ? `${API_URL}/api/v1/analytics/vcard/${vcardId}?timeRange=30d`
-        : `${API_URL}/api/v1/analytics/metrics?timeRange=30d`;
+        ? `${apiPath}/analytics/vcard/${vcardId}?timeRange=30d`
+        : `${apiPath}/analytics/metrics?timeRange=30d`;
 
       console.log(`📊 Fetching initial metrics from endpoint: ${endpoint}`);
 
@@ -311,9 +314,12 @@ export const useAnalyticsSSE = ({ vcardId }: UseAnalyticsSSEProps = {}) => {
       }
 
       // Determine SSE endpoint based on vcardId
+      // Check if API_URL already contains '/api'
+      const apiPath = API_URL.endsWith('/api') ? `${API_URL}/v1` : `${API_URL}/api/v1`;
+
       const sseEndpoint = vcardId
-        ? `${API_URL}/api/v1/analytics/vcard/${vcardId}/stream`
-        : `${API_URL}/api/v1/analytics/stream`;
+        ? `${apiPath}/analytics/vcard/${vcardId}/stream`
+        : `${apiPath}/analytics/stream`;
 
       console.log(`🔌 Connecting to SSE endpoint: ${sseEndpoint}`);
 

@@ -86,7 +86,12 @@ export const trackEvent = async (
       return false;
     }
 
-    const response = await fetch(`${apiUrl}/api/v1/analytics/scan`, {
+    // Check if apiUrl already contains '/api'
+    const endpoint = apiUrl.endsWith('/api')
+      ? `${apiUrl}/v1/analytics/scan`
+      : `${apiUrl}/api/v1/analytics/scan`;
+
+    const response = await fetch(endpoint, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'

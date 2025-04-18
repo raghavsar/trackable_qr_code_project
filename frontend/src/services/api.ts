@@ -9,7 +9,10 @@ const API_URL = import.meta.env.VITE_API_URL;
 const API_VERSION = 'v1';
 
 export const getApiUrl = (path: string): string => {
-  return `${API_URL}/api/${API_VERSION}${path}`;
+  // Check if API_URL already contains '/api'
+  return API_URL.endsWith('/api')
+    ? `${API_URL}/${API_VERSION}${path}`
+    : `${API_URL}/api/${API_VERSION}${path}`;
 };
 
 export class QRService {
@@ -73,7 +76,7 @@ export class QRService {
   async getVCard(vcardId: string): Promise<VCardResponse> {
     try {
       console.log('Getting VCard with ID:', vcardId)
-      
+
       if (!vcardId || typeof vcardId !== 'string') {
         console.error('Invalid VCard ID:', vcardId)
         throw new Error('Invalid VCard ID')
@@ -88,9 +91,9 @@ export class QRService {
       console.log('Making request to get VCard:', vcardId)
       const response = await axiosInstance.get(`/vcards/public/${vcardId}`)
       const vcard = response.data
-      
+
       console.log('Received VCard data:', vcard)
-      
+
       if (!vcard || !vcard._id) {
         console.error('Invalid VCard data received from server:', vcard)
         throw new Error('Invalid VCard data received from server')
@@ -147,7 +150,10 @@ export class AnalyticsService {
   async getAnalytics(timeRange: string): Promise<AnalyticsData> {
     try {
       console.log('📊 Fetching general analytics with timeRange:', timeRange);
-      const response = await axiosInstance.get(`/analytics/metrics?timeRange=${timeRange}`);
+      // Use the getApiUrl helper to ensure correct URL construction
+      const url = `/analytics/metrics?timeRange=${timeRange}`;
+      console.log('📊 Analytics URL:', url);
+      const response = await axiosInstance.get(url);
       console.log('📊 Analytics response:', response.data);
       return response.data;
     } catch (error) {
@@ -163,16 +169,17 @@ export class AnalyticsService {
 
   async getQRCodeAnalytics(qrCodeId: string, timeRange: string = '30'): Promise<AnalyticsData> {
     try {
+      const url = `/analytics/vcard/${qrCodeId}?timeRange=${timeRange}d`;
       console.log('📊 Fetching VCard analytics:', {
         vcardId: qrCodeId,
         timeRange,
-        url: `/analytics/vcard/${qrCodeId}?timeRange=${timeRange}d`
+        url
       });
 
       const token = localStorage.getItem('token');
       console.log('🔑 Auth token present:', !!token);
 
-      const response = await axiosInstance.get(`/analytics/vcard/${qrCodeId}?timeRange=${timeRange}d`);
+      const response = await axiosInstance.get(url);
       console.log('📊 VCard Analytics response:', response.data);
       return response.data;
     } catch (error) {
@@ -190,16 +197,17 @@ export class AnalyticsService {
 
   async getVCardAnalytics(vcardId: string, timeRange: string = '30'): Promise<AnalyticsData> {
     try {
+      const url = `/analytics/vcard/${vcardId}?timeRange=${timeRange}d`;
       console.log('📊 Fetching VCard analytics:', {
         vcardId: vcardId,
         timeRange,
-        url: `/analytics/vcard/${vcardId}?timeRange=${timeRange}d`
+        url
       });
 
       const token = localStorage.getItem('token');
       console.log('🔑 Auth token present:', !!token);
 
-      const response = await axiosInstance.get(`/analytics/vcard/${vcardId}?timeRange=${timeRange}d`);
+      const response = await axiosInstance.get(url);
       console.log('📊 VCard Analytics response:', response.data);
       return response.data;
     } catch (error) {
@@ -211,12 +219,12 @@ export class AnalyticsService {
           headers: error.response?.headers
         });
       }
-      
+
       // Generate date range for the timeRange
       const today = new Date();
       const startDate = format(subDays(today, parseInt(timeRange)), 'yyyy-MM-dd');
       const endDate = format(today, 'yyyy-MM-dd');
-      
+
       // Return complete fallback data that matches AnalyticsData type
       console.log('Returning fallback data for VCard analytics');
       return {
@@ -239,17 +247,17 @@ export class AnalyticsService {
     const history = [];
     const days = parseInt(timeRange);
     const today = new Date();
-    
+
     for (let i = 0; i < days; i++) {
       const date = new Date();
       date.setDate(today.getDate() - (days - i - 1));
       const dateStr = date.toISOString().split('T')[0];
-      
+
       // Generate a curve that looks like real data
       const factor = 0.5 + (i / days) * 0.5; // Values increase as we get closer to today
       const totalScans = Math.round(4 * factor); // Based on the metrics card value
       const mobileScans = Math.min(totalScans, Math.round(4 * factor)); // Based on the metrics card value
-      
+
       history.push({
         date: dateStr,
         count: totalScans,
@@ -257,7 +265,7 @@ export class AnalyticsService {
         action: 'scan' // Required by ScanHistoryEntry type
       });
     }
-    
+
     return history;
   }
 }
@@ -293,4 +301,4 @@ api.interceptors.response.use(
     }
     return Promise.reject(error);
   }
-); 
+);
