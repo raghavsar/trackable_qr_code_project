@@ -38,7 +38,6 @@ qr.phonon.io {
 
 	# Handle MinIO requests
 	handle_path /minio/* {
-		uri strip_prefix /minio
 		reverse_proxy http://minio:9000 {
 			trusted_proxies private_ranges
 			header_up Host {host}
