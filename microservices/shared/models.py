@@ -158,7 +158,7 @@ class VCardData(BaseModel):
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
     user_id: Optional[str] = None
-    
+
     # New fields for unified structure
     qr_code: Optional[QRCodeInfo] = None
     analytics: VCardAnalytics = Field(default_factory=VCardAnalytics)
@@ -274,4 +274,4 @@ class KafkaMessage(BaseModel):
     class Config:
         json_encoders = {
             datetime: lambda dt: dt.isoformat()
-        } 
+        }

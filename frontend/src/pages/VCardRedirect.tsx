@@ -114,9 +114,6 @@ export default function VCardRedirect() {
 
       // Get API URL from environment
       const apiUrl = import.meta.env.VITE_API_URL;
-      if (!apiUrl) {
-          throw new Error('API URL not configured');
-      }
 
       // Download VCF
       const response = await fetch(`${apiUrl}/api/v1/vcards/${vcard._id}/download`, {

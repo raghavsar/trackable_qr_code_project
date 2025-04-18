@@ -696,6 +696,7 @@ export default function VCardForm() {
                                 onChange={handleInputChange}
                                 placeholder="123 Main Street"
                                 className="border-muted-foreground/20"
+                                disabled={useDefaultAddress}
                               />
                             </div>
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
