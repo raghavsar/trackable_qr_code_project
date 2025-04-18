@@ -7,7 +7,7 @@ export default defineConfig(({ mode }) => {
   // Load env file based on `mode` in the current working directory.
   // Set the third parameter to '' to load all env regardless of the `VITE_` prefix.
   const env = loadEnv(mode, process.cwd(), '')
-  
+
   return {
     plugins: [react()],
     resolve: {
@@ -17,7 +17,7 @@ export default defineConfig(({ mode }) => {
     },
     server: {
       port: 5173,
-      host: '192.168.7.60',
+      host: '0.0.0.0',
       allowedHosts: ['qr.phonon.io'],
       proxy: {
         '/api': {
@@ -35,12 +35,12 @@ export default defineConfig(({ mode }) => {
       },
       cors: true,
       hmr: {
-        host: '192.168.7.60'
+        host: 'qr.phonon.io'
       }
     },
     preview: {
       port: 5173,
-      host: '192.168.7.60',
+      host: '0.0.0.0',
       allowedHosts: ['qr.phonon.io']
     },
     define: {
@@ -55,4 +55,4 @@ export default defineConfig(({ mode }) => {
       'process.env': {}
     }
   }
-}) 
+})
