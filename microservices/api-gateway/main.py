@@ -861,6 +861,20 @@ async def get_public_vcard(vcard_id: str, request: Request):
     """Get public VCard data without authentication."""
     return await forward_request(request, settings.VCARD_SERVICE_URL, f"/vcards/public/{vcard_id}")
 
+# Redirect service routes
+@app.get("/r/{vcard_id}")
+async def redirect_vcard(vcard_id: str, request: Request):
+    """Forward redirect requests to the redirect service."""
+    try:
+        logger.info(f"Forwarding redirect request for VCard {vcard_id}")
+        return await forward_request(request, settings.REDIRECT_SERVICE_URL, f"/r/{vcard_id}")
+    except Exception as e:
+        logger.error(f"Error forwarding redirect request: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error forwarding redirect request: {str(e)}"
+        )
+
 # Add this diagnostic endpoint for testing client IP handling
 @app.get("/v1/test-client-ip")
 async def get_client_ip(request: Request):

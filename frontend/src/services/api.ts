@@ -10,9 +10,13 @@ const API_VERSION = 'v1';
 
 export const getApiUrl = (path: string): string => {
   // Check if API_URL already contains '/api'
-  return API_URL.endsWith('/api')
-    ? `${API_URL}/${API_VERSION}${path}`
-    : `${API_URL}/api/${API_VERSION}${path}`;
+  if (API_URL.includes('/api')) {
+    // Handle case where API_URL already has '/api' in it
+    return `${API_URL}/${API_VERSION}${path}`;
+  } else {
+    // Add '/api' if it's not already in the URL
+    return `${API_URL}/api/${API_VERSION}${path}`;
+  }
 };
 
 export class QRService {

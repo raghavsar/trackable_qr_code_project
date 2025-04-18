@@ -114,9 +114,17 @@ export default function VCardRedirect() {
 
       // Get API URL from environment
       const apiUrl = import.meta.env.VITE_API_URL;
+      if (!apiUrl) {
+        throw new Error('API URL not configured');
+      }
+
+      // Construct the URL correctly to avoid duplicate 'api' in the path
+      // Use the redirect service's VCF download endpoint which doesn't require authentication
+      const downloadUrl = `${apiUrl}/r/${vcard._id}?format=vcf`;
+      console.log('Downloading VCF from URL:', downloadUrl);
 
       // Download VCF
-      const response = await fetch(`${apiUrl}/api/v1/vcards/${vcard._id}/download`, {
+      const response = await fetch(downloadUrl, {
         headers: {
           'Accept': 'text/vcard'
         }
