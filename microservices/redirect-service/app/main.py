@@ -92,12 +92,12 @@ def generate_vcard(vcard_data: dict) -> bytes:
     if vcard_data.get('address'):
         addr = vcard_data['address']
 
-        # Get address components
-        street = addr.get('street', '')
-        city = addr.get('city', '')
-        state = addr.get('state', '')
-        zip_code = addr.get('zip_code', '')
-        country = addr.get('country', '')
+        # Get address components and ensure they are strings
+        street = str(addr.get('street', '')) if addr.get('street') is not None else ''
+        city = str(addr.get('city', '')) if addr.get('city') is not None else ''
+        state = str(addr.get('state', '')) if addr.get('state') is not None else ''
+        zip_code = str(addr.get('zip_code', '')) if addr.get('zip_code') is not None else ''
+        country = str(addr.get('country', '')) if addr.get('country') is not None else ''
 
         # Only add if any address component exists
         if any([street, city, state, zip_code, country]):
@@ -111,10 +111,14 @@ def generate_vcard(vcard_data: dict) -> bytes:
                 zip_code,
                 country
             ]
+            # Ensure all parts are strings
+            adr_parts = [str(part) if part is not None else '' for part in adr_parts]
             vcard_lines.append(f"ADR;TYPE=WORK:{';'.join(adr_parts)}")
 
             # Add formatted address label
-            formatted_address = ", ".join(filter(None, [street, city, state, zip_code, country]))
+            # Use only non-empty strings for the formatted address
+            address_parts = [part for part in [street, city, state, zip_code, country] if part]
+            formatted_address = ", ".join(address_parts)
             vcard_lines.append(f"LABEL;TYPE=WORK:{formatted_address}")
 
     # Add notes without map URL
@@ -125,7 +129,7 @@ def generate_vcard(vcard_data: dict) -> bytes:
         vcard_lines.append(f"NOTE:{notes}")
 
     # Add revision timestamp
-    vcard_lines.append(f"REV:{datetime.utcnow().strftime('%Y%m%dT%H%M%SZ')}")
+    vcard_lines.append(f"REV:{datetime.now(datetime.timezone.utc).strftime('%Y%m%dT%H%M%SZ')}")
 
     vcard_lines.append("END:VCARD")
 
@@ -139,7 +143,25 @@ def get_platform_specific_url(vcard_data: dict, device_info: dict) -> str:
     base_url = os.getenv('FRONTEND_URL', 'http://localhost:3000').rstrip('/')
 
     # Generate VCF content first
-    vcf_content = generate_vcard(vcard_data)
+    try:
+        vcf_content = generate_vcard(vcard_data)
+        logger.info("Successfully generated VCF content")
+    except Exception as e:
+        logger.error(f"Error generating VCF content: {str(e)}")
+        # Create a safe copy of vcard_data with string values
+        safe_vcard_data = {}
+        for key, value in vcard_data.items():
+            if key == 'address' and isinstance(value, dict):
+                safe_address = {}
+                for addr_key, addr_value in value.items():
+                    safe_address[addr_key] = str(addr_value) if addr_value is not None else ''
+                safe_vcard_data[key] = safe_address
+            else:
+                safe_vcard_data[key] = str(value) if value is not None else ''
+
+        # Try again with the safe data
+        logger.info("Retrying with sanitized data")
+        vcf_content = generate_vcard(safe_vcard_data)
 
     if device_info["is_mobile"]:
         logger.info(f"Processing mobile device. OS: {device_info['os']}, Browser: {device_info['browser']}")
@@ -169,7 +191,7 @@ async def notify_analytics(vcard_id: str, request: Request, device_info: dict, a
         event_data = {
             "event_id": event_id,
             "vcard_id": vcard_id,
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(datetime.timezone.utc).isoformat(),
             "device_info": device_info,
             "action_type": action_type,
             "success": True,
@@ -267,8 +289,30 @@ async def redirect_to_vcard(
         # For mobile devices or explicit VCF request, serve the VCF file directly
         if device_info["is_mobile"] or format == "vcf":
             logger.info("Serving VCard file directly")
-            vcf_content = generate_vcard(vcard)
-            filename = f"{vcard['first_name']}_{vcard['last_name']}.vcf"
+            try:
+                vcf_content = generate_vcard(vcard)
+                logger.info("Successfully generated VCF content")
+            except Exception as e:
+                logger.error(f"Error generating VCF content: {str(e)}")
+                # Create a safe copy of vcard with string values
+                safe_vcard = {}
+                for key, value in vcard.items():
+                    if key == 'address' and isinstance(value, dict):
+                        safe_address = {}
+                        for addr_key, addr_value in value.items():
+                            safe_address[addr_key] = str(addr_value) if addr_value is not None else ''
+                        safe_vcard[key] = safe_address
+                    else:
+                        safe_vcard[key] = str(value) if value is not None else ''
+
+                # Try again with the safe data
+                logger.info("Retrying with sanitized data")
+                vcf_content = generate_vcard(safe_vcard)
+
+            # Ensure first_name and last_name are strings
+            first_name = str(vcard.get('first_name', '')) if vcard.get('first_name') is not None else ''
+            last_name = str(vcard.get('last_name', '')) if vcard.get('last_name') is not None else ''
+            filename = f"{first_name}_{last_name}.vcf"
 
             # If the action wasn't already vcf_download, record it now
             if action != "vcf_download":
