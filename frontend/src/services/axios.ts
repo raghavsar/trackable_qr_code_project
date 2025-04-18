@@ -6,8 +6,11 @@ const API_VERSION = import.meta.env.VITE_API_VERSION || 'v1'
 // Ensure we're using port 8000 for the API
 const apiUrl = API_URL.replace(':5173', ':8000');
 
+// Check if API_URL already contains '/api'
+const baseUrlPath = apiUrl.endsWith('/api') ? `${apiUrl}/${API_VERSION}` : `${apiUrl}/api/${API_VERSION}`;
+
 export const axiosInstance = axios.create({
-  baseURL: `${apiUrl}/api/${API_VERSION}`,
+  baseURL: baseUrlPath,
   headers: {
     'Content-Type': 'application/json',
   },

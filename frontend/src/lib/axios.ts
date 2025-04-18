@@ -5,8 +5,13 @@ interface CustomAxiosRequestConfig extends InternalAxiosRequestConfig {
 }
 
 // Create axios instance with default config
+// Check if API_URL already contains '/api'
+const baseUrl = typeof __API_URL__ === 'string' && __API_URL__.endsWith('/api')
+  ? __API_URL__
+  : `${__API_URL__}/api`;
+
 export const api = axios.create({
-  baseURL: __API_URL__,
+  baseURL: baseUrl,
   withCredentials: true,
   timeout: 15000, // 15 second timeout
   headers: {
@@ -22,7 +27,7 @@ const RETRY_DELAY = 1000 // 1 second
 // Add request interceptor
 api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
   const token = localStorage.getItem('token')
-  
+
   if (token) {
     config.headers.Authorization = `Bearer ${token}`
   }
@@ -30,7 +35,7 @@ api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
   // Convert to CustomAxiosRequestConfig and initialize retryCount
   const customConfig = config as CustomAxiosRequestConfig
   customConfig.retryCount = 0
-  
+
   return customConfig
 })
 
@@ -61,15 +66,15 @@ api.interceptors.response.use(
             throw new Error('No refresh token available')
           }
 
-          const response = await api.post('/api/v1/auth/refresh', {
+          const response = await api.post('/v1/auth/refresh', {
             refresh_token: refreshToken
           })
 
           const { access_token, refresh_token: new_refresh_token } = response.data
-          
+
           localStorage.setItem('token', access_token)
           localStorage.setItem('refresh_token', new_refresh_token)
-          
+
           // Update token in config and retry
           config.headers.Authorization = `Bearer ${access_token}`
           return api.request(config)
@@ -88,14 +93,14 @@ api.interceptors.response.use(
       case 504: // Gateway Timeout
         // Increment retry count
         config.retryCount += 1
-        
+
         // Wait for delay * retry count
         await new Promise(resolve => setTimeout(resolve, RETRY_DELAY * config.retryCount))
-        
+
         // Retry request
         return api.request(config)
     }
 
     return Promise.reject(error)
   }
-) 
+)
