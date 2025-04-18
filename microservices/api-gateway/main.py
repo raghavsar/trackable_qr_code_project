@@ -883,6 +883,45 @@ async def get_client_ip(request: Request):
         "all_headers": dict(request.headers)
     }
 
+# MinIO proxy endpoint for QR code images
+@app.get("/v1/storage/{bucket}/{path:path}")
+async def proxy_minio_storage(bucket: str, path: str, request: Request):
+    """Proxy requests to MinIO storage."""
+    logger.info(f"Proxying MinIO request for bucket: {bucket}, path: {path}")
+
+    # Construct the MinIO URL
+    minio_url = f"http://minio:9000/{bucket}/{path}"
+    logger.info(f"Forwarding to MinIO URL: {minio_url}")
+
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            # Forward the request to MinIO
+            response = await client.get(minio_url)
+
+            # Get content type
+            content_type = response.headers.get("content-type", "application/octet-stream")
+            logger.info(f"MinIO response content type: {content_type}")
+
+            # Return the response with appropriate headers
+            return Response(
+                content=response.content,
+                media_type=content_type,
+                status_code=response.status_code,
+                headers={
+                    "Content-Type": content_type,
+                    "Cache-Control": "public, max-age=86400",  # Cache for 24 hours
+                    "Access-Control-Allow-Origin": "*",
+                    "Access-Control-Allow-Methods": "GET, OPTIONS",
+                    "Access-Control-Allow-Headers": "*"
+                }
+            )
+    except Exception as e:
+        logger.error(f"Error proxying MinIO request: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"Storage service unavailable: {str(e)}"
+        )
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(

@@ -36,31 +36,7 @@ qr.phonon.io {
 		}
 	}
 
-	# Handle MinIO requests
-	handle_path /minio/* {
-		reverse_proxy http://minio:9000 {
-			trusted_proxies private_ranges
-			header_up Host {host}
-			header_up X-Real-IP {remote_host}
-			header_up X-Forwarded-Proto {scheme}
-
-			# Remove the /minio prefix from the path
-			rewrite * {path}
-
-			# CORS headers for MinIO resources
-			header_down Access-Control-Allow-Origin "*"
-			header_down Access-Control-Allow-Methods "GET, POST, OPTIONS"
-			header_down Access-Control-Allow-Headers "*"
-			header_down Access-Control-Expose-Headers "ETag, X-Content-Type-Options, X-Amz-Request-Id"
-			header_down X-Content-Type-Options "nosniff"
-		}
-
-		# Handle OPTIONS requests for CORS
-		@options {
-			method OPTIONS
-		}
-		respond @options 204
-	}
+	# MinIO access is now handled through the API Gateway
 
 	# Logging for this specific site
 	log {

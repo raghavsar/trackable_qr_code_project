@@ -125,11 +125,12 @@ class MinioStorage:
             )
             logger.info(f"QR code uploaded successfully: {object_name}")
 
-            # Return permanent public URL
-            # Ensure the endpoint doesn't have a trailing slash and the bucket name is included correctly
-            endpoint = self.endpoint.rstrip('/')
-            public_url = f"{endpoint}/{self.bucket_name}/{object_name}"
-            logger.info(f"Generated public URL: {public_url}")
+            # Return permanent public URL through the API gateway
+            # Use the API gateway URL format for storage access
+            api_base_url = os.getenv("API_GATEWAY_URL", "https://qr.phonon.io/api")
+            api_base_url = api_base_url.rstrip('/')
+            public_url = f"{api_base_url}/v1/storage/{self.bucket_name}/{object_name}"
+            logger.info(f"Generated public URL via API gateway: {public_url}")
 
             return public_url
 
@@ -150,8 +151,9 @@ class MinioStorage:
         Returns:
             str: Public URL to access the QR code
         """
-        endpoint = self.endpoint.rstrip('/')
-        return f"{endpoint}/{self.bucket_name}/{object_name}"
+        api_base_url = os.getenv("API_GATEWAY_URL", "https://qr.phonon.io/api")
+        api_base_url = api_base_url.rstrip('/')
+        return f"{api_base_url}/v1/storage/{self.bucket_name}/{object_name}"
 
     async def delete_qr_code(self, object_name: str):
         """
@@ -277,9 +279,10 @@ class StorageService:
                 content_type=f"image/jpeg"
             )
 
-            # Return public URL
-            endpoint = self.public_endpoint.rstrip('/')
-            return f"{endpoint}/{self.bucket_name}/{filename}"
+            # Return public URL via API gateway
+            api_base_url = os.getenv("API_GATEWAY_URL", "https://qr.phonon.io/api")
+            api_base_url = api_base_url.rstrip('/')
+            return f"{api_base_url}/v1/storage/{self.bucket_name}/{filename}"
 
         except Exception as e:
             logger.error(f"Error uploading profile photo: {str(e)}")

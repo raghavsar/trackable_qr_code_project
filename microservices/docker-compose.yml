@@ -39,8 +39,8 @@ services:
       - MINIO_ROOT_PASSWORD=minioadmin
       - MINIO_ADDRESS=:9000
       - MINIO_CONSOLE_ADDRESS=:9001
-      - MINIO_BROWSER_REDIRECT_URL=http://192.168.7.60:9001
-      - MINIO_SERVER_URL=http://192.168.7.60:9000
+      - MINIO_BROWSER_REDIRECT_URL=https://qr.phonon.io/api/v1/storage
+      - MINIO_SERVER_URL=https://qr.phonon.io
     command: server /data --console-address ":9001"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
@@ -161,6 +161,7 @@ services:
       - MINIO_SECRET_KEY=qr_service_password_123
       - MINIO_BUCKET_NAME=qrcodes
       - MINIO_USE_SSL=false
+      - API_GATEWAY_URL=https://qr.phonon.io/api
       - REDIRECT_SERVICE_URL=http://redirect-service:8005
 
   analytics-service:
