@@ -159,13 +159,31 @@ export interface QRGenerateResponse {
 export interface QRGenerationError {
     detail: string;
     status_code: number;
+    status?: number; // Add this for backward compatibility
+    message?: string; // Add this for backward compatibility
+    code?: string; // Add this for backward compatibility
+    details?: any; // Add this for backward compatibility
 }
 
 export interface QRPreviewRequest {
     vcard_data: Record<string, any>;
     design_options: QRDesignOptions;
+    design?: QRDesignOptions; // Add this for backward compatibility
 }
 
 export interface QRPreviewResponse {
     qr_image_base64: string;
-} 
+    preview_url?: string; // Add this for backward compatibility
+}
+
+// Default Phonon QR template
+export const DEFAULT_PHONON_TEMPLATE: QRDesignOptions = {
+    box_size: 10,
+    border: 4,
+    foreground_color: '#000000',
+    background_color: '#FFFFFF',
+    eye_color: '#000000',
+    module_color: '#000000',
+    pattern_style: 'square',
+    error_correction: 'M'
+};

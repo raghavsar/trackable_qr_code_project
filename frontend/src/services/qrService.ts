@@ -11,7 +11,9 @@ import {
 class QRService {
   private handleError(error: any): never {
     const qrError: QRGenerationError = {
+      status_code: error.response?.status || 500,
       status: error.response?.status || 500,
+      detail: error.response?.data?.detail || 'Failed to generate QR code',
       message: error.response?.data?.detail || 'Failed to generate QR code',
       code: error.code,
       details: error.response?.data
@@ -37,14 +39,8 @@ class QRService {
 
       // Ensure the URL is properly formatted
       if (response.data.qr_image_url) {
-        // If it's already a full URL, use it as is
-        if (response.data.qr_image_url.startsWith('http')) {
-          // URL is already complete
-        } else {
-          // Add the API base URL if needed
-          const baseUrl = import.meta.env.VITE_API_URL || '';
-          response.data.qr_image_url = `${baseUrl}${response.data.qr_image_url}`;
-        }
+        // Use our getDownloadUrl method to ensure consistent URL formatting
+        response.data.qr_image_url = this.getDownloadUrl(response.data);
 
         // Log the final URL for debugging
         console.log('QR Image URL:', response.data.qr_image_url);
@@ -74,13 +70,21 @@ class QRService {
 
       // Ensure the URL is properly formatted
       if (response.data.preview_url) {
-        // If it's already a full URL, use it as is
-        if (response.data.preview_url.startsWith('http')) {
-          // URL is already complete
-        } else {
-          // Add the API base URL if needed
+        // If the URL doesn't start with http, prepend the API base URL
+        if (!response.data.preview_url.startsWith('http')) {
           const baseUrl = import.meta.env.VITE_API_URL || '';
           response.data.preview_url = `${baseUrl}${response.data.preview_url}`;
+        }
+
+        // Check if the URL is using the old format (direct MinIO access)
+        if (response.data.preview_url.includes('/qrcodes/') && !response.data.preview_url.includes('/api/v1/storage/')) {
+          // Convert to new format using API gateway
+          const apiUrl = import.meta.env.VITE_API_URL || '';
+          // Extract the path after /qrcodes/
+          const pathMatch = response.data.preview_url.match(/\/qrcodes\/(.*)/i);
+          if (pathMatch && pathMatch[1]) {
+            response.data.preview_url = `${apiUrl}/v1/storage/qrcodes/${pathMatch[1]}`;
+          }
         }
 
         // Log the final URL for debugging
@@ -99,14 +103,8 @@ class QRService {
 
       // Ensure the URL is properly formatted
       if (response.data.qr_image_url) {
-        // If it's already a full URL, use it as is
-        if (response.data.qr_image_url.startsWith('http')) {
-          // URL is already complete
-        } else {
-          // Add the API base URL if needed
-          const baseUrl = import.meta.env.VITE_API_URL || '';
-          response.data.qr_image_url = `${baseUrl}${response.data.qr_image_url}`;
-        }
+        // Use our getDownloadUrl method to ensure consistent URL formatting
+        response.data.qr_image_url = this.getDownloadUrl(response.data);
 
         // Log the final URL for debugging
         console.log('QR Image URL (get):', response.data.qr_image_url);
@@ -147,14 +145,8 @@ class QRService {
 
       // Ensure the URL is properly formatted
       if (response.data.qr_image_url) {
-        // If it's already a full URL, use it as is
-        if (response.data.qr_image_url.startsWith('http')) {
-          // URL is already complete
-        } else {
-          // Add the API base URL if needed
-          const baseUrl = import.meta.env.VITE_API_URL || '';
-          response.data.qr_image_url = `${baseUrl}${response.data.qr_image_url}`;
-        }
+        // Use our getDownloadUrl method to ensure consistent URL formatting
+        response.data.qr_image_url = this.getDownloadUrl(response.data);
 
         // Log the final URL for debugging
         console.log('QR Image URL (update):', response.data.qr_image_url);
@@ -175,6 +167,19 @@ class QRService {
       const url = `${baseUrl}${qrCode.qr_image_url}`;
       console.log('Download URL (constructed):', url);
       return url;
+    }
+
+    // Check if the URL is using the old format (direct MinIO access)
+    if (qrCode.qr_image_url.includes('/qrcodes/') && !qrCode.qr_image_url.includes('/api/v1/storage/')) {
+      // Convert to new format using API gateway
+      const apiUrl = import.meta.env.VITE_API_URL || '';
+      // Extract the path after /qrcodes/
+      const pathMatch = qrCode.qr_image_url.match(/\/qrcodes\/(.*)/i);
+      if (pathMatch && pathMatch[1]) {
+        const newUrl = `${apiUrl}/v1/storage/qrcodes/${pathMatch[1]}`;
+        console.log('Download URL (converted to API gateway):', newUrl);
+        return newUrl;
+      }
     }
 
     console.log('Download URL (original):', qrCode.qr_image_url);
