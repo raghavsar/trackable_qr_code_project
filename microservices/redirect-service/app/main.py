@@ -111,20 +111,12 @@ def generate_vcard(vcard_data: dict) -> bytes:
                 zip_code,
                 country
             ]
-            vcard_lines.append(f"ADR;TYPE=HOME:{';'.join(adr_parts)}")
-            
-            # Add formatted home address label
+            vcard_lines.append(f"ADR;TYPE=WORK:{';'.join(adr_parts)}")
+
+            # Add formatted address label
             formatted_address = ", ".join(filter(None, [street, city, state, zip_code, country]))
-            vcard_lines.append(f"LABEL;TYPE=HOME:{formatted_address}")
-    
-    # Add work address with fixed Google Maps URL in notes
-    work_address = "106, Blue Diamond Complex, next to Indian Oil Petrol Pump, Fatehgunj, Vadodara, Gujarat 390002"
-    work_map_url = "https://maps.app.goo.gl/99bjahgR1SJdWXbb7"
-    
-    # Add work address
-    vcard_lines.append("ADR;TYPE=WORK:;;106, Blue Diamond Complex;Fatehgunj;Vadodara;390002;Gujarat, India")
-    vcard_lines.append(f"LABEL;TYPE=WORK:{work_address}")
-    
+            vcard_lines.append(f"LABEL;TYPE=WORK:{formatted_address}")
+
     # Add notes without map URL
     notes_content = vcard_data.get('notes', '')
     if notes_content:
@@ -162,7 +154,7 @@ def get_platform_specific_url(vcard_data: dict, device_info: dict) -> str:
                 "Cache-Control": "no-cache"
             }
         )
-    
+
     # Web fallback with VCF download
     logger.info("Using web fallback with VCF download")
     return f"{base_url}/r/{vcard_data['_id']}?format=vcf"

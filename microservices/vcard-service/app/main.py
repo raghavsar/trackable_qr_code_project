@@ -7,7 +7,7 @@ import os
 import logging
 import httpx
 
-from shared.models import VCardData, PyObjectId
+from shared.models import VCardData, PyObjectId, AddressData
 from .database import get_database
 from .auth import get_current_user
 
@@ -73,7 +73,13 @@ async def create_vcard(
         vcard_dict["user_id"] = current_user["id"]
         vcard_dict["created_at"] = datetime.utcnow()
         vcard_dict["updated_at"] = vcard_dict["created_at"]
-        
+
+        # Set default address if none provided
+        if not vcard_dict.get("address") or not vcard_dict["address"].get("street"):
+            logger.info("No address provided, using default address")
+            vcard_dict["address"] = AddressData.get_default_address().dict()
+            logger.info(f"Set default address: {vcard_dict['address']}")
+
         # Initialize QR code and analytics fields
         vcard_dict["qr_code"] = None  # Will be populated by QR service
         vcard_dict["analytics"] = {
@@ -394,8 +400,8 @@ async def download_vcard(
             
             # Only add if any address component exists
             if any([street, city, state, zip_code, country]):
-                # Create home address with proper format
-                home_adr_parts = [
+                # Create address with proper format
+                adr_parts = [
                     "",  # PO Box
                     "",  # Extended Address
                     street,
@@ -404,23 +410,15 @@ async def download_vcard(
                     zip_code,
                     country
                 ]
-                
-                # Add home address with proper type
-                vcf_lines.append(f"ADR;TYPE=HOME:{';'.join(home_adr_parts)}")
-                
-                # Add formatted address label for home
-                home_formatted = ", ".join(filter(None, [street, city, state, zip_code, country]))
-                if home_formatted:
-                    vcf_lines.append(f"LABEL;TYPE=HOME:{home_formatted}")
-        
-        # Add work address with physical address and Google Maps URL in notes
-        work_address = "106, Blue Diamond Complex, next to Indian Oil Petrol Pump, Fatehgunj, Vadodara, Gujarat 390002"
-        work_map_url = "https://maps.app.goo.gl/99bjahgR1SJdWXbb7"
-        
-        # Add work address
-        vcf_lines.append("ADR;TYPE=WORK:;;106, Blue Diamond Complex;Fatehgunj;Vadodara;390002;Gujarat, India")
-        vcf_lines.append(f"LABEL;TYPE=WORK:{work_address}")
-        
+
+                # Add address with WORK type (for better compatibility)
+                vcf_lines.append(f"ADR;TYPE=WORK:{';'.join(adr_parts)}")
+
+                # Add formatted address label
+                formatted_address = ", ".join(filter(None, [street, city, state, zip_code, country]))
+                if formatted_address:
+                    vcf_lines.append(f"LABEL;TYPE=WORK:{formatted_address}")
+
         # Add notes without map URL
         notes_content = vcard.get('notes', '')
         if notes_content:

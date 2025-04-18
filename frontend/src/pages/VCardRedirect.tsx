@@ -57,8 +57,8 @@ export default function VCardRedirect() {
     };
   }, [id]);
 
-  // Compute formatted home address from address object
-  const getFormattedHomeAddress = (address: VCardResponse['address']) => {
+  // Compute formatted address from address object
+  const getFormattedAddress = (address: VCardResponse['address']) => {
     if (!address) return '';
 
     const parts = [];
@@ -71,9 +71,9 @@ export default function VCardRedirect() {
     return parts.join(', ');
   };
 
-  // Fixed work address and Google Maps URL
-  const workGoogleMapsUrl = "https://maps.app.goo.gl/99bjahgR1SJdWXbb7";
-  const workAddress = "106, Blue Diamond Complex, Fatehgunj, Vadodara 390002, Gujarat, India";
+  // Phonon HQ address and Google Maps URL
+  const phononHQMapsUrl = "https://maps.app.goo.gl/99bjahgR1SJdWXbb7";
+  const phononHQAddress = "106, Blue Diamond Complex, Fatehgunj, Vadodara 390002, Gujarat, India";
 
   // Function to handle adding contact directly
   const handleAddContact = async () => {
@@ -112,11 +112,13 @@ export default function VCardRedirect() {
       // Track download using our new utility function
       await trackVcfDownload(vcard._id, vcard.user_id);
 
+      // Get API URL from environment
       const apiUrl = import.meta.env.VITE_API_URL;
       if (!apiUrl) {
           throw new Error('API URL not configured');
       }
 
+      // Download VCF
       const response = await fetch(`${apiUrl}/api/v1/vcards/${vcard._id}/download`, {
         headers: {
           'Accept': 'text/vcard'
@@ -241,31 +243,30 @@ export default function VCardRedirect() {
               </div>
             )}
 
-            {/* Work Address (always show) */}
-            <div className="flex items-start space-x-3">
-              <Briefcase className="w-6 h-6 text-gray-500 mt-0.5 flex-shrink-0" />
-              <div>
-                <span className="text-sm font-medium text-gray-500 block">Work Address</span>
-                <a
-                  href={workGoogleMapsUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-blue-600 hover:underline leading-relaxed"
-                >
-                  {workAddress}
-                </a>
-              </div>
-            </div>
-
-            {/* Home Address (only show if available) */}
-            {vcard.address && Object.values(vcard.address).some(value => value) && (
+            {/* Address */}
+            {vcard.address && Object.values(vcard.address).some(value => value) ? (
               <div className="flex items-start space-x-3">
                 <Home className="w-6 h-6 text-gray-500 mt-0.5 flex-shrink-0" />
                 <div>
-                  <span className="text-sm font-medium text-gray-500 block">Home Address</span>
+                  <span className="text-sm font-medium text-gray-500 block">Address</span>
                   <span className="text-gray-700">
-                    {getFormattedHomeAddress(vcard.address)}
+                    {getFormattedAddress(vcard.address)}
                   </span>
+                </div>
+              </div>
+            ) : (
+              <div className="flex items-start space-x-3">
+                <Briefcase className="w-6 h-6 text-gray-500 mt-0.5 flex-shrink-0" />
+                <div>
+                  <span className="text-sm font-medium text-gray-500 block">Address</span>
+                  <a
+                    href={phononHQMapsUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-blue-600 hover:underline leading-relaxed"
+                  >
+                    {phononHQAddress}
+                  </a>
                 </div>
               </div>
             )}

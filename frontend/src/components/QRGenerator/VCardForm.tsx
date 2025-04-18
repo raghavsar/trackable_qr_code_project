@@ -10,12 +10,14 @@ import { Textarea } from "../ui/textarea"
 import { toast } from 'react-hot-toast'
 import { qrService } from '@/services/api'
 import type { QRCodeResponse } from '@/types/api'
-import { 
+import {
   ChevronRight,
-  User, Briefcase, MapPin, Mail, Phone, Globe, FileText, 
+  User, Briefcase, MapPin, Mail, Phone, Globe, FileText,
   Upload, PlusCircle, QrCode, Check,
-  CreditCard
-} from 'lucide-react'
+  CreditCard, ToggleLeft, ToggleRight
+}
+from 'lucide-react'
+import { Switch } from "../ui/switch"
 import QRCodeEditor from './QRCodeEditor'
 import QRCodeList from './QRCodeList'
 import { Badge } from "../ui/badge"
@@ -23,12 +25,12 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "../ui/tabs"
 import { PhoneNumberInput } from '../PhoneNumberInput'
 import {
   AlertDialog,
-  AlertDialogAction, 
+  AlertDialogAction,
   AlertDialogCancel,
-  AlertDialogContent, 
-  AlertDialogDescription, 
-  AlertDialogFooter, 
-  AlertDialogHeader, 
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
   AlertDialogTitle
 } from "../ui/alert-dialog"
 
@@ -52,29 +54,29 @@ interface FormData {
   notes: string | undefined
 }
 
-const ProfilePictureUpload = ({ 
-  profilePicture, 
-  onFileChange 
-}: { 
+const ProfilePictureUpload = ({
+  profilePicture,
+  onFileChange
+}: {
   profilePicture: string | undefined;
   onFileChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
 }) => {
   const fileInputRef = React.useRef<HTMLInputElement>(null);
   const [isDragging, setIsDragging] = React.useState(false);
-  
+
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(true);
   };
-  
+
   const handleDragLeave = () => {
     setIsDragging(false);
   };
-  
+
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(false);
-    
+
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
       // Create a synthetic event to reuse the existing handler
       const event = {
@@ -82,13 +84,13 @@ const ProfilePictureUpload = ({
           files: e.dataTransfer.files
         }
       } as unknown as React.ChangeEvent<HTMLInputElement>;
-      
+
       onFileChange(event);
     }
   };
-  
+
   return (
-    <div 
+    <div
       className={`w-full flex flex-col items-center space-y-4 p-6 rounded-lg border-2 border-dashed transition-colors ${
         isDragging ? 'border-primary bg-primary/5' : 'border-gray-200 hover:border-gray-300'
       }`}
@@ -96,15 +98,15 @@ const ProfilePictureUpload = ({
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
     >
-      <div 
-        className="relative group cursor-pointer" 
+      <div
+        className="relative group cursor-pointer"
         onClick={() => fileInputRef.current?.click()}
       >
         <div className="w-28 h-28 rounded-full overflow-hidden border-2 border-white shadow-md transition-transform group-hover:scale-105">
           {profilePicture ? (
-            <img 
-              src={profilePicture} 
-              alt="Profile" 
+            <img
+              src={profilePicture}
+              alt="Profile"
               className="w-full h-full object-cover"
             />
           ) : (
@@ -113,11 +115,11 @@ const ProfilePictureUpload = ({
             </div>
           )}
         </div>
-        
+
         <div className="absolute inset-0 flex items-center justify-center rounded-full bg-black/30 text-white opacity-0 group-hover:opacity-100 transition-opacity">
           <Upload className="h-6 w-6" />
         </div>
-        
+
         {profilePicture && (
           <div className="absolute -bottom-1 -right-1">
             <Badge className="bg-primary text-white border-2 border-white shadow-sm">
@@ -127,7 +129,7 @@ const ProfilePictureUpload = ({
           </div>
         )}
       </div>
-      
+
       <div className="text-center">
         <input
           type="file"
@@ -136,21 +138,21 @@ const ProfilePictureUpload = ({
           className="hidden"
           ref={fileInputRef}
         />
-        
-        <Button 
-          type="button" 
-          variant="outline" 
+
+        <Button
+          type="button"
+          variant="outline"
           className="mb-2"
           onClick={() => fileInputRef.current?.click()}
         >
           <Upload className="mr-2 h-4 w-4" />
           {profilePicture ? 'Change Photo' : 'Upload Image'}
         </Button>
-        
+
         <p className="text-xs text-muted-foreground">
           JPG, PNG or GIF • Max 5MB
         </p>
-        
+
         <div className="mt-2 text-xs text-muted-foreground">
           Or drop image here
         </div>
@@ -179,13 +181,14 @@ export default function VCardForm() {
     },
     notes: undefined
   })
-  
+
   const [loading, setLoading] = useState(false)
   const [qrCode, setQrCode] = useState<QRCodeResponse | null>(null)
   const [showEditor, setShowEditor] = useState(false)
   const [activeTab, setActiveTab] = useState("personal")
   const qrListRef = React.useRef<{ refreshList: () => void } | null>(null)
   const [deleteCodeId, setDeleteCodeId] = useState<string | null>(null)
+  const [useDefaultAddress, setUseDefaultAddress] = useState(true)
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target
@@ -237,8 +240,21 @@ export default function VCardForm() {
     e.preventDefault()
     try {
       setLoading(true)
+
+      // If using default address, clear any custom address values
+      let submissionData = {...formData}
+      if (useDefaultAddress) {
+        submissionData.address = {
+          street: undefined,  // The backend will use the default address
+          city: undefined,
+          state: undefined,
+          country: undefined,
+          zip_code: undefined
+        }
+      }
+
       // Create VCard first
-      const vcard = await qrService.createVCard(formData)
+      const vcard = await qrService.createVCard(submissionData)
       // Generate QR code with direct vCard data
       const qrCode = await qrService.generateQRCode({
         vcard_id: vcard._id || vcard.id,
@@ -276,7 +292,7 @@ export default function VCardForm() {
 
       // Get vcard_id from either root level or metadata
       const vcardId = qrCode.vcard_id || (qrCode.metadata && qrCode.metadata.vcard_id);
-      
+
       console.log('Extracted vCard ID:', vcardId);
 
       if (!vcardId) {
@@ -357,7 +373,7 @@ export default function VCardForm() {
 
   const confirmDelete = async () => {
     if (!deleteCodeId) return;
-    
+
     try {
       await qrService.deleteQRCode(deleteCodeId)
       toast.success('QR code deleted successfully')
@@ -403,8 +419,8 @@ export default function VCardForm() {
       </AlertDialog>
 
       {showEditor && qrCode ? (
-        <QRCodeEditor 
-          qrCode={qrCode} 
+        <QRCodeEditor
+          qrCode={qrCode}
           onUpdate={handleUpdateComplete}
           onBack={() => setShowEditor(false)}
         />
@@ -425,7 +441,7 @@ export default function VCardForm() {
                 </Badge>
               </div>
             </CardHeader>
-            
+
             <CardContent className="p-0">
               <form onSubmit={handleSubmit} className="space-y-6">
                 <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
@@ -454,8 +470,8 @@ export default function VCardForm() {
                       <div className="space-y-4">
                         <div className="space-y-4 mb-6">
                           <h3 className="text-base font-medium leading-6 text-gray-900">Profile Picture</h3>
-                          <ProfilePictureUpload 
-                            profilePicture={formData.profile_picture} 
+                          <ProfilePictureUpload
+                            profilePicture={formData.profile_picture}
                             onFileChange={handleFileChange}
                           />
                         </div>
@@ -509,21 +525,21 @@ export default function VCardForm() {
                             className="border-muted-foreground/20"
                           />
                         </div>
-                        
+
                         <div className="flex justify-between mt-4">
                           <div></div>
-                          <Button 
-                            type="button" 
+                          <Button
+                            type="button"
                             onClick={() => setActiveTab("company")}
                             className="gap-2"
                           >
-                            Next: Company Details 
+                            Next: Company Details
                             <ChevronRight className="h-4 w-4" />
                           </Button>
                         </div>
                       </div>
                     </TabsContent>
-                    
+
                     <TabsContent value="company" className="mt-0">
                       <div className="space-y-4">
                         <div className="border rounded-lg p-5 bg-muted/30">
@@ -591,15 +607,15 @@ export default function VCardForm() {
                         </div>
 
                         <div className="flex justify-between mt-4">
-                          <Button 
-                            type="button" 
-                            variant="outline" 
+                          <Button
+                            type="button"
+                            variant="outline"
                             onClick={() => setActiveTab("personal")}
                           >
                             Back
                           </Button>
-                          <Button 
-                            type="button" 
+                          <Button
+                            type="button"
                             onClick={() => setActiveTab("contact")}
                             className="gap-2"
                           >
@@ -609,7 +625,7 @@ export default function VCardForm() {
                         </div>
                       </div>
                     </TabsContent>
-                    
+
                     <TabsContent value="contact" className="mt-0">
                       <div className="space-y-4">
                         <div className="border rounded-lg p-5 bg-muted/30">
@@ -653,7 +669,22 @@ export default function VCardForm() {
                             <MapPin className="h-4 w-4 mr-2 text-primary" />
                             Address Information
                           </h3>
-                          <div className="space-y-4">
+
+                          <div className="flex items-center justify-between mb-4 p-3 bg-gray-50 rounded-md border">
+                            <div className="flex items-center space-x-2">
+                              {useDefaultAddress ?
+                                <ToggleRight className="h-5 w-5 text-primary" /> :
+                                <ToggleLeft className="h-5 w-5 text-gray-400" />}
+                              <span className="text-sm font-medium">Use default address: Phonon HQ</span>
+                            </div>
+                            <Switch
+                              checked={useDefaultAddress}
+                              onCheckedChange={setUseDefaultAddress}
+                              aria-label="Toggle default address"
+                            />
+                          </div>
+
+                          <div className="space-y-4" style={{ opacity: useDefaultAddress ? 0.5 : 1 }}>
                             <div className="space-y-1.5">
                               <Label htmlFor="address.street" className="text-sm font-medium">
                                 Street Address
@@ -679,6 +710,7 @@ export default function VCardForm() {
                                   onChange={handleInputChange}
                                   placeholder="City"
                                   className="border-muted-foreground/20"
+                                  disabled={useDefaultAddress}
                                 />
                               </div>
                               <div className="space-y-1.5">
@@ -692,6 +724,7 @@ export default function VCardForm() {
                                   onChange={handleInputChange}
                                   placeholder="State or Province"
                                   className="border-muted-foreground/20"
+                                  disabled={useDefaultAddress}
                                 />
                               </div>
                             </div>
@@ -707,6 +740,7 @@ export default function VCardForm() {
                                   onChange={handleInputChange}
                                   placeholder="ZIP or Postal Code"
                                   className="border-muted-foreground/20"
+                                  disabled={useDefaultAddress}
                                 />
                               </div>
                               <div className="space-y-1.5">
@@ -720,6 +754,7 @@ export default function VCardForm() {
                                   onChange={handleInputChange}
                                   placeholder="Country"
                                   className="border-muted-foreground/20"
+                                  disabled={useDefaultAddress}
                                 />
                               </div>
                             </div>
@@ -727,15 +762,15 @@ export default function VCardForm() {
                         </div>
 
                         <div className="flex justify-between mt-6">
-                          <Button 
-                            type="button" 
-                            variant="outline" 
+                          <Button
+                            type="button"
+                            variant="outline"
                             onClick={() => setActiveTab("company")}
                           >
                             Back
                           </Button>
-                          <Button 
-                            type="submit" 
+                          <Button
+                            type="submit"
                             disabled={loading || !isFormComplete()}
                             className="gap-2 bg-primary hover:bg-primary/90 text-white"
                           >
@@ -781,7 +816,7 @@ export default function VCardForm() {
               </div>
             </CardHeader>
             <CardContent className="pt-6 px-6 pb-0">
-              <QRCodeList 
+              <QRCodeList
                 ref={qrListRef}
                 onEdit={handleEdit}
                 onShare={handleShare}

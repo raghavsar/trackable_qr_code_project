@@ -64,6 +64,17 @@ class AddressData(BaseModel):
     zip_code: Optional[str] = None
     country: Optional[str] = None
 
+    @classmethod
+    def get_default_address(cls):
+        """Returns the default address for Phonon HQ"""
+        return cls(
+            street="106, Blue Diamond Complex",
+            city="Fatehgunj, Vadodara",
+            state="Gujarat",
+            zip_code="390002",
+            country="India"
+        )
+
 # QR Code Design Options
 class QRDesignOptions(BaseModel):
     box_size: int = Field(10, gt=0, description="Box size must be positive")

@@ -71,7 +71,7 @@ def get_module_drawer(style: str, color: tuple) -> SquareModuleDrawer:
             raise ValueError(f"Invalid color value: {color}")
 
         logger.info(f"Creating module drawer for style: {style}")
-        
+
         if style.lower() == 'dots':
             logger.info("Using CircleModuleDrawer for dots pattern")
             drawer = CircleModuleDrawer()
@@ -108,27 +108,27 @@ def process_logo(logo_path: str, add_background: bool = False, make_round: bool 
             logo = Image.open(BytesIO(response.content))
         else:
             logo = Image.open(logo_path)
-        
+
         # Convert to RGBA
         logo = logo.convert('RGBA')
-        
+
         # Create a white circular background first
         background = Image.new('RGBA', logo.size, (255, 255, 255, 255))
         mask = Image.new('L', logo.size, 0)
         draw = ImageDraw.Draw(mask)
-        
+
         # Draw a circle with anti-aliasing
         draw.ellipse((0, 0, logo.size[0], logo.size[1]), fill=255)
         mask = mask.filter(ImageFilter.GaussianBlur(1))
-        
+
         # Apply the mask to the white background
         background.putalpha(mask)
-        
+
         # Paste the logo onto the white circular background
         background.paste(logo, (0, 0), logo)
-        
+
         return background
-        
+
     except Exception as e:
         logger.error(f"Error processing logo: {str(e)}")
         logger.error(f"Current working directory: {os.getcwd()}")
@@ -237,8 +237,8 @@ def generate_vcard_content(vcard_data: dict) -> str:
             state = addr.get('state', '')
             zip_code = addr.get('zip_code', '')
             country = addr.get('country', '')
-            
-            # Create ADR property with HOME type
+
+            # Create ADR property with WORK type (for better compatibility)
             adr_parts = [
                 "",  # Post office box
                 "",  # Extended address
@@ -248,22 +248,14 @@ def generate_vcard_content(vcard_data: dict) -> str:
                 zip_code,
                 country
             ]
-            vcard_lines.append(f"ADR;TYPE=HOME:{';'.join(adr_parts)}")
-            
-            # Add formatted home address label
+            vcard_lines.append(f"ADR;TYPE=WORK:{';'.join(adr_parts)}")
+
+            # Add formatted address label
             formatted_address = ", ".join(filter(None, [street, city, state, zip_code, country]))
-            vcard_lines.append(f"LABEL;TYPE=HOME:{formatted_address}")
-            
-            logger.info(f"Added home address: {formatted_address}")
-    
-    # Add work address with fixed Google Maps URL included in the ADR field
-    work_address = "106, Blue Diamond Complex, next to Indian Oil Petrol Pump, Fatehgunj, Vadodara, Gujarat 390002"
-    work_map_url = "https://maps.app.goo.gl/99bjahgR1SJdWXbb7"
-    
-    # Add work address
-    vcard_lines.append("ADR;TYPE=WORK:;;106, Blue Diamond Complex;Fatehgunj;Vadodara;390002;Gujarat, India")
-    vcard_lines.append(f"LABEL;TYPE=WORK:{work_address}")
-    
+            vcard_lines.append(f"LABEL;TYPE=WORK:{formatted_address}")
+
+            logger.info(f"Added address: {formatted_address}")
+
     # Add notes without map URL
     notes_content = vcard_data.get('notes', '')
     if notes_content:
@@ -376,7 +368,7 @@ async def generate_vcard_qr(vcard_data: dict, style_config: QRDesignOptions) -> 
             # Inner square (5x5)
             inner_pad = style_config.box_size
             draw.rectangle([
-                x + inner_pad, 
+                x + inner_pad,
                 y + inner_pad,
                 x + eye_size - inner_pad - 1,
                 y + eye_size - inner_pad - 1
@@ -389,7 +381,7 @@ async def generate_vcard_qr(vcard_data: dict, style_config: QRDesignOptions) -> 
                 x + eye_size - center_pad - 1,
                 y + eye_size - center_pad - 1
             ], fill=eye_color)
-        
+
         # Process logo if provided
         if style_config.logo_url:
             logger.info(f"Processing logo from path: {style_config.logo_url}")
