@@ -6,7 +6,7 @@ This document provides an overview of the API endpoints available in the QR Code
 
 - **Development**: http://localhost:8000
 - **Staging**: http://192.168.7.60:8000
-- **Production**: https://qr.phonon.io/api (future)
+- **Production**: https://qr.phonon.io/api
 
 ## Authentication
 
