@@ -232,12 +232,6 @@ The QR codes contain a URL that points to the Redirect Service, which handles th
                                               │
                                               ▼
                                        ┌─────────────┐
-                                       │    Redis    │
-                                       │  (Caching)  │
-                                       └─────────────┘
-                                              │
-                                              ▼
-                                       ┌─────────────┐
                                        │   MongoDB   │
                                        │ (Analytics) │
                                        └─────────────┘
@@ -410,6 +404,6 @@ The QR codes contain a URL that points to the Redirect Service, which handles th
 
 ### 8.3 Support Resources
 
-- GitHub repository: <repository-url>
+- GitHub repository: Available at internal server with user raghav@192.168.7.60
 - Documentation: Available in the `docs` directory
-- Issue tracker: <issue-tracker-url>
+
